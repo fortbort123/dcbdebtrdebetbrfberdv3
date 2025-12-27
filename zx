@@ -3621,6 +3621,43 @@ local function _nilapiApplyOptionValues(controller, values)
     end
 end
 
+local function _nilapiPostBuild(controller, opts)
+    if not controller or type(controller) ~= "table" then
+        return controller
+    end
+    if opts and type(opts._nilapiBuildLog) == "table" then
+        pcall(function()
+            _nilapiReplayBuild(controller, opts._nilapiBuildLog)
+        end)
+    end
+    if opts and type(opts._nilapiOptionValues) == "table" then
+        pcall(function()
+            _nilapiApplyOptionValues(controller, opts._nilapiOptionValues)
+        end)
+    end
+    if opts and type(opts.onAfterBuild) == "function" then
+        pcall(function()
+            opts.onAfterBuild(controller)
+        end)
+    end
+
+    if opts and opts._nilapiRestoreActiveTab ~= nil and tostring(opts._nilapiRestoreActiveTab or "") ~= "" then
+        pcall(function()
+            if controller.SetActiveTab then
+                controller:SetActiveTab(tostring(opts._nilapiRestoreActiveTab or ""))
+            end
+        end)
+    elseif opts and opts.initialActiveTab ~= nil and tostring(opts.initialActiveTab or "") ~= "" then
+        pcall(function()
+            if controller.SetActiveTab then
+                controller:SetActiveTab(tostring(opts.initialActiveTab or ""))
+            end
+        end)
+    end
+
+    return controller
+end
+
 -- Fancy keybinds display (floating card)
 -- Kept outside createAsteriaGUI to avoid Luau local-register limits.
 local function createFancyKeybindsDisplay(opts)
@@ -24322,59 +24359,6 @@ local function createAsteriaGUI(title, opts)
         accentBlack = ACCENT_BLACK,
     })
 
-    local controllerRef = nil
-
-
-
-    -- Wire command-bar "reload" to rebuild this UI instance.
-    -- (This matches the original behavior where the command bar could trigger a full rebuild.)
-    do
-        -- Preserve ALL options so reload behaves the same as the initial build.
-        -- Avoid table-copy loops here (this function is already near Luau's local-register limit).
-        local reloadOpts
-        if type(opts) == "table" then
-            reloadOpts = opts
-        else
-            reloadOpts = {}
-        end
-        reloadOpts.title = title
-        reloadOpts.buildTabs = buildTabs
-        reloadOpts.buildDefaultContent = buildDefaultContent
-
-        reloadUI = function()
-            local buildLog = nil
-            local optionValues = nil
-            local restoreTab = nil
-            if controllerRef and type(controllerRef) == "table" then
-                buildLog = controllerRef.__nilapiBuildLog
-                optionValues = _nilapiSnapshotOptionValues(controllerRef)
-                restoreTab = controllerRef.__nilapiLastActiveTab
-            end
-
-            if type(buildLog) == "table" then
-                reloadOpts._nilapiBuildLog = buildLog
-            end
-            if type(optionValues) == "table" then
-                reloadOpts._nilapiOptionValues = optionValues
-            end
-            if restoreTab ~= nil then
-                reloadOpts._nilapiRestoreActiveTab = tostring(restoreTab)
-            end
-
-            if screenGui and screenGui.Parent ~= nil then
-                if keybindsDisplay and type(keybindsDisplay.Destroy) == "function" then
-                    pcall(function()
-                        keybindsDisplay:Destroy()
-                    end)
-                end
-                pcall(function()
-                    screenGui:Destroy()
-                end)
-            end
-            return attachBuilder(createAsteriaGUI(reloadOpts))
-        end
-    end
-
     -- Return the GUI components for external access
     local controller = {
         screenGui = screenGui,
@@ -24438,47 +24422,36 @@ local function createAsteriaGUI(title, opts)
 
     controller = attachBuilder(controller)
 
-    controllerRef = controller
-
-    -- Internal: if a reload passed a recorded API-build log, replay it now.
-    if opts and type(opts._nilapiBuildLog) == "table" then
-        pcall(function()
-            _nilapiReplayBuild(controller, opts._nilapiBuildLog)
-        end)
-    end
-
-    -- Internal: restore option values after replay (silent).
-    if opts and type(opts._nilapiOptionValues) == "table" then
-        pcall(function()
-            _nilapiApplyOptionValues(controller, opts._nilapiOptionValues)
-        end)
-    end
-
-    -- Optional: allow the caller to finalize layout after everything exists.
-    if opts and type(opts.onAfterBuild) == "function" then
-        pcall(function()
-            opts.onAfterBuild(controller)
-        end)
-    end
-
-    local restoredActiveTab = false
-    if opts and opts._nilapiRestoreActiveTab ~= nil then
-        local t = tostring(opts._nilapiRestoreActiveTab or "")
-        if t ~= "" then
-            restoredActiveTab = true
-            pcall(function()
-                setActiveTab(t)
-            end)
+    -- Wire command-bar "reload" to rebuild this UI instance.
+    -- (This matches the original behavior where the command bar could trigger a full rebuild.)
+    do
+        -- Preserve ALL options so reload behaves the same as the initial build.
+        -- Avoid table-copy loops here (this function is already near Luau's local-register limit).
+        if type(opts) ~= "table" then
+            opts = {}
         end
-    end
+        opts.title = title
+        opts.buildTabs = buildTabs
+        opts.buildDefaultContent = buildDefaultContent
 
-    -- Optional: pick an initial tab after build (helps prevent a "blank" page).
-    if (not restoredActiveTab) and opts and opts.initialActiveTab ~= nil then
-        local initialTab = tostring(opts.initialActiveTab or "")
-        if initialTab ~= "" then
-            pcall(function()
-                setActiveTab(initialTab)
-            end)
+        reloadUI = function()
+            opts._nilapiBuildLog = controller.__nilapiBuildLog
+            opts._nilapiOptionValues = _nilapiSnapshotOptionValues(controller)
+            opts._nilapiRestoreActiveTab = controller.__nilapiLastActiveTab
+
+            if screenGui and screenGui.Parent ~= nil then
+                if keybindsDisplay and type(keybindsDisplay.Destroy) == "function" then
+                    pcall(function()
+                        keybindsDisplay:Destroy()
+                    end)
+                end
+                pcall(function()
+                    screenGui:Destroy()
+                end)
+            end
+            local rebuilt = createAsteriaGUI(opts)
+            rebuilt = attachBuilder(rebuilt)
+            return _nilapiPostBuild(rebuilt, opts)
         end
     end
 
@@ -24502,17 +24475,22 @@ function Api.Create(arg)
         if opts.buildDefaultContent == nil then
             opts.buildDefaultContent = false
         end
-        local gui = attachBuilder(createAsteriaGUI(opts))
+        local gui = createAsteriaGUI(opts)
+        gui = attachBuilder(gui)
+        gui = _nilapiPostBuild(gui, opts)
         if gui and gui.screenGui then
             pcall(installLocalPlayerSpeedBinding, gui.screenGui)
         end
         return gui
     end
 
-    local gui = attachBuilder(createAsteriaGUI(arg or "Asteria Hub", {
+    local createOpts = {
         buildTabs = false,
         buildDefaultContent = false,
-    }))
+    }
+    local gui = createAsteriaGUI(arg or "Asteria Hub", createOpts)
+    gui = attachBuilder(gui)
+    gui = _nilapiPostBuild(gui, createOpts)
 
     if gui and gui.screenGui then
         pcall(installLocalPlayerSpeedBinding, gui.screenGui)
@@ -24538,7 +24516,9 @@ function Api.new(opts)
             buildDefaultContent = (opts.buildDefaultContent == nil) and false or opts.buildDefaultContent,
             rootPageName = opts.rootPageName,
         }
-        gui = attachBuilder(createAsteriaGUI(createOpts))
+        gui = createAsteriaGUI(createOpts)
+        gui = attachBuilder(gui)
+        gui = _nilapiPostBuild(gui, createOpts)
         if gui and gui.screenGui then
             pcall(installLocalPlayerSpeedBinding, gui.screenGui)
         end
