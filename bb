@@ -22863,6 +22863,7 @@ local function createAsteriaGUI(title, opts)
     -- Initial load: show only headers, then drop modules in after 1s
     local initialDropPlayed = false
     local initialDropHolding = false
+    local pendingInitialModuleDrop = (opts and opts.legacyInitialDrop == false) or false
 
     local function getSectionFrameFromElementsContainer(elementsContainer)
         if elementsContainer
@@ -22897,6 +22898,35 @@ local function createAsteriaGUI(title, opts)
 
                 -- Hide the elements container entirely during the hold.
                 elementsContainer.Visible = false
+
+                -- Pre-collapse rows while hidden so the expand animation "extends down".
+                for _, child in ipairs(elementsContainer:GetChildren()) do
+                    if child:IsA("GuiObject") then
+                        if child:GetAttribute("AsteriaSearchOriginalVisible") == nil then
+                            child:SetAttribute("AsteriaSearchOriginalVisible", child.Visible)
+                        end
+
+                        cancelTweenFor(activeSearchRowTweens, child)
+                        local originalSize = getOrStoreOriginalSize(child)
+
+                        local originallyVisible = child:GetAttribute("AsteriaSearchOriginalVisible")
+                        if originallyVisible == nil then
+                            originallyVisible = true
+                        end
+
+                        if originallyVisible then
+                            local collapsedSize = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, 0)
+                            child.Visible = true
+                            child.Size = collapsedSize
+
+                            local cg = getOrCreateSearchCanvasGroup(child)
+                            cancelTweenFor(activeSearchGroupTweens, cg)
+                            cg.GroupTransparency = 1
+                        else
+                            child.Visible = false
+                        end
+                    end
+                end
             end
         end
     end
@@ -22929,7 +22959,7 @@ local function createAsteriaGUI(title, opts)
                     end
                 end
 
-                -- Make the container visible again and fade rows in (no height-resize squish).
+                -- Make the container visible again; rows will expand down.
                 elementsContainer.Visible = true
 
                 local rowIndex = 0
@@ -22946,17 +22976,11 @@ local function createAsteriaGUI(title, opts)
                             if rowDelay > 0 then
                                 task.delay(rowDelay, function()
                                     if child and child.Parent ~= nil then
-                                        local cg = getOrCreateSearchCanvasGroup(child)
-                                        cancelTweenFor(activeSearchGroupTweens, cg)
-                                        cg.GroupTransparency = 1
-                                        tweenCanvasGroup(cg, 0, INITIAL_DROP_FADE_TIME)
+                                        setRowVisibleAnimated(child, true, INITIAL_DROP_TWEEN_TIME, INITIAL_DROP_FADE_TIME)
                                     end
                                 end)
                             else
-                                local cg = getOrCreateSearchCanvasGroup(child)
-                                cancelTweenFor(activeSearchGroupTweens, cg)
-                                cg.GroupTransparency = 1
-                                tweenCanvasGroup(cg, 0, INITIAL_DROP_FADE_TIME)
+                                setRowVisibleAnimated(child, true, INITIAL_DROP_TWEEN_TIME, INITIAL_DROP_FADE_TIME)
                             end
                         else
                             child.Visible = false
@@ -23012,6 +23036,12 @@ local function createAsteriaGUI(title, opts)
                 applySearchFilter(searchBox.Text)
             end
         end)
+    end
+
+    local function ensureInitialModuleDropIfPending()
+        if pendingInitialModuleDrop and not initialDropPlayed then
+            playInitialModuleDropAnimation()
+        end
     end
 
     -- Page/tab switch animation (fade + slight slide)
@@ -23656,8 +23686,7 @@ local function createAsteriaGUI(title, opts)
         end
     end
 
-    -- One-time initial animation (defer 1 tick so the initial state renders first)
-    -- If legacy initial drop is enabled, we skip the module-drop hold to avoid the "blank header" phase.
+    -- One-time intro animation (module-drop is triggered lazily after the caller builds UI)
     if task and task.defer then
         task.defer(function()
             -- Let UIListLayouts measure content so sections don't "grow" during the intro.
@@ -23670,9 +23699,6 @@ local function createAsteriaGUI(title, opts)
             end
 
             playIntroAnimation()
-            if opts.legacyInitialDrop == false then
-                playInitialModuleDropAnimation()
-            end
         end)
     else
         spawn(function()
@@ -23682,9 +23708,6 @@ local function createAsteriaGUI(title, opts)
             end
 
             playIntroAnimation()
-            if opts.legacyInitialDrop == false then
-                playInitialModuleDropAnimation()
-            end
         end)
     end
 
@@ -23896,6 +23919,7 @@ local function createAsteriaGUI(title, opts)
             return apiCreateTabButtonImpl(sideBar, pagesByTabText, setActiveTab, bindTabScrollButtonHover, ACCENT_BLACK, ACCENT_PRIMARY, tabText, iconAsset)
         end,
         SetActiveTab = function(tabText)
+            ensureInitialModuleDropIfPending()
             return setActiveTab(tostring(tabText or ""))
         end,
         CreatePanel = function(panelOpts)
