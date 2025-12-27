@@ -22546,35 +22546,13 @@ local function createAsteriaGUI(title, opts)
     local SEARCH_EASE_STYLE = Enum.EasingStyle.Sine
     local SEARCH_EASE_DIR = Enum.EasingDirection.InOut
 
-    -- Module-drop (headers only -> rows extend down) should start quickly; keep legacy defaults unless overridden.
-    local usingModuleDrop = (opts and opts.legacyInitialDrop == false)
-
-    local INITIAL_DROP_DELAY
-    if opts and opts.initialDropDelay ~= nil then
-        INITIAL_DROP_DELAY = tonumber(opts.initialDropDelay) or 0
-    else
-        INITIAL_DROP_DELAY = usingModuleDrop and 0.12 or 0.7
-    end
-
-    local INITIAL_DROP_TWEEN_TIME = (opts and opts.initialDropTweenTime ~= nil)
-        and (tonumber(opts.initialDropTweenTime) or 0.40)
-        or (usingModuleDrop and 0.28 or 0.40)
-
-    local INITIAL_DROP_FADE_TIME = (opts and opts.initialDropFadeTime ~= nil)
-        and (tonumber(opts.initialDropFadeTime) or 0.12)
-        or (usingModuleDrop and 0.10 or 0.12)
-
-    local INITIAL_DROP_PAGE_STAGGER = (opts and opts.initialDropPageStagger ~= nil)
-        and (tonumber(opts.initialDropPageStagger) or 0)
-        or 0
-
-    local INITIAL_DROP_SECTION_STAGGER = (opts and opts.initialDropSectionStagger ~= nil)
-        and (tonumber(opts.initialDropSectionStagger) or 0)
-        or 0
-
-    local INITIAL_DROP_ROW_STAGGER = (opts and opts.initialDropRowStagger ~= nil)
-        and (tonumber(opts.initialDropRowStagger) or 0)
-        or (usingModuleDrop and 0.01 or 0)
+    -- Match NILHUBFULLUI.lua defaults for the "header-only -> modules extend down" initial drop.
+    local INITIAL_DROP_DELAY = (opts and opts.initialDropDelay ~= nil) and (tonumber(opts.initialDropDelay) or 0.7) or 0.7
+    local INITIAL_DROP_TWEEN_TIME = (opts and opts.initialDropTweenTime ~= nil) and (tonumber(opts.initialDropTweenTime) or 0.40) or 0.40
+    local INITIAL_DROP_FADE_TIME = (opts and opts.initialDropFadeTime ~= nil) and (tonumber(opts.initialDropFadeTime) or 0.12) or 0.12
+    local INITIAL_DROP_PAGE_STAGGER = 0
+    local INITIAL_DROP_SECTION_STAGGER = 0
+    local INITIAL_DROP_ROW_STAGGER = 0
 
     local activeSearchRowTweens = {}
     local activeSearchSectionTweens = {}
@@ -22914,23 +22892,23 @@ local function createAsteriaGUI(title, opts)
                         sectionFrame:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(sectionFrame.Size))
                     end
 
-                    -- Header-only during the hold (clean look, no squished controls).
+                    -- Keep header visible, collapse overall section to header height.
                     sectionFrame.Visible = true
-                    sectionFrame.Size = UDim2.new(sectionFrame.Size.X.Scale, sectionFrame.Size.X.Offset, 0, 36)
+                    local originalSectionSize = decodeUDim2(sectionFrame:GetAttribute("AsteriaSearchOriginalSize")) or sectionFrame.Size
+                    sectionFrame.Size = UDim2.new(originalSectionSize.X.Scale, originalSectionSize.X.Offset, 0, 36)
                 end
 
-                -- Hide the elements container entirely during the hold.
-                elementsContainer.Visible = false
-
-                -- Pre-collapse rows while hidden so the expand animation "extends down".
                 for _, child in ipairs(elementsContainer:GetChildren()) do
                     if child:IsA("GuiObject") then
                         if child:GetAttribute("AsteriaSearchOriginalVisible") == nil then
                             child:SetAttribute("AsteriaSearchOriginalVisible", child.Visible)
                         end
 
+                        -- Prevent any in-flight row tweens (from tab switch/search) from re-expanding rows early.
                         cancelTweenFor(activeSearchRowTweens, child)
-                        local originalSize = getOrStoreOriginalSize(child)
+
+                        -- Store original size before we change it.
+                        getOrStoreOriginalSize(child)
 
                         local originallyVisible = child:GetAttribute("AsteriaSearchOriginalVisible")
                         if originallyVisible == nil then
@@ -22938,7 +22916,9 @@ local function createAsteriaGUI(title, opts)
                         end
 
                         if originallyVisible then
+                            local originalSize = getOrStoreOriginalSize(child)
                             local collapsedSize = UDim2.new(originalSize.X.Scale, originalSize.X.Offset, 0, 0)
+
                             child.Visible = true
                             child.Size = collapsedSize
 
@@ -22955,12 +22935,8 @@ local function createAsteriaGUI(title, opts)
     end
 
     local function expandAllRowsForPage(page)
-        local sectionIndex = 0
         for _, elementsContainer in ipairs(page:GetDescendants()) do
             if elementsContainer:IsA("ScrollingFrame") and elementsContainer.Name == "ElementsContainer" then
-                sectionIndex += 1
-                local sectionDelay = math.max(0, (sectionIndex - 1) * INITIAL_DROP_SECTION_STAGGER)
-
                 local sectionFrame = getSectionFrameFromElementsContainer(elementsContainer)
                 if sectionFrame then
                     local originalSectionVisible = sectionFrame:GetAttribute("AsteriaSearchOriginalVisible")
@@ -22968,43 +22944,19 @@ local function createAsteriaGUI(title, opts)
                     if shouldShowSection then
                         sectionFrame.Visible = true
                         local originalSectionSize = decodeUDim2(sectionFrame:GetAttribute("AsteriaSearchOriginalSize")) or sectionFrame.Size
-                        if sectionDelay > 0 then
-                            task.delay(sectionDelay, function()
-                                if sectionFrame and sectionFrame.Parent ~= nil then
-                                    tweenGuiSize(sectionFrame, activeSearchSectionTweens, originalSectionSize, INITIAL_DROP_TWEEN_TIME)
-                                end
-                            end)
-                        else
-                            tweenGuiSize(sectionFrame, activeSearchSectionTweens, originalSectionSize, INITIAL_DROP_TWEEN_TIME)
-                        end
+                        tweenGuiSize(sectionFrame, activeSearchSectionTweens, originalSectionSize, INITIAL_DROP_TWEEN_TIME)
                     else
                         sectionFrame.Visible = false
                     end
                 end
-
-                -- Make the container visible again; rows will expand down.
-                elementsContainer.Visible = true
-
-                local rowIndex = 0
                 for _, child in ipairs(elementsContainer:GetChildren()) do
                     if child:IsA("GuiObject") then
-                        rowIndex += 1
                         local originallyVisible = child:GetAttribute("AsteriaSearchOriginalVisible")
                         if originallyVisible == nil then
                             originallyVisible = true
                         end
-
                         if originallyVisible then
-                            local rowDelay = sectionDelay + math.max(0, (rowIndex - 1) * INITIAL_DROP_ROW_STAGGER)
-                            if rowDelay > 0 then
-                                task.delay(rowDelay, function()
-                                    if child and child.Parent ~= nil then
-                                        setRowVisibleAnimated(child, true, INITIAL_DROP_TWEEN_TIME, INITIAL_DROP_FADE_TIME)
-                                    end
-                                end)
-                            else
-                                setRowVisibleAnimated(child, true, INITIAL_DROP_TWEEN_TIME, INITIAL_DROP_FADE_TIME)
-                            end
+                            setRowVisibleAnimated(child, true, INITIAL_DROP_TWEEN_TIME, INITIAL_DROP_FADE_TIME)
                         else
                             child.Visible = false
                         end
@@ -23032,25 +22984,8 @@ local function createAsteriaGUI(title, opts)
         task.delay(INITIAL_DROP_DELAY, function()
             initialDropHolding = false
 
-            local pages = {}
             for _, p in pairs(pagesByTabText) do
                 if p and p:IsA("Frame") then
-                    table.insert(pages, p)
-                end
-            end
-            table.sort(pages, function(a, b)
-                return tostring(a.Name) < tostring(b.Name)
-            end)
-
-            for i, p in ipairs(pages) do
-                local pageDelay = math.max(0, (i - 1) * INITIAL_DROP_PAGE_STAGGER)
-                if pageDelay > 0 then
-                    task.delay(pageDelay, function()
-                        if p and p.Parent ~= nil then
-                            expandAllRowsForPage(p)
-                        end
-                    end)
-                else
                     expandAllRowsForPage(p)
                 end
             end
