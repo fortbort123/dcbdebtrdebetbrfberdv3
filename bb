@@ -22546,12 +22546,35 @@ local function createAsteriaGUI(title, opts)
     local SEARCH_EASE_STYLE = Enum.EasingStyle.Sine
     local SEARCH_EASE_DIR = Enum.EasingDirection.InOut
 
-    local INITIAL_DROP_DELAY = tonumber(opts.initialDropDelay) or 0.7
-    local INITIAL_DROP_TWEEN_TIME = tonumber(opts.initialDropTweenTime) or 0.40
-    local INITIAL_DROP_FADE_TIME = tonumber(opts.initialDropFadeTime) or 0.12
-    local INITIAL_DROP_PAGE_STAGGER = tonumber(opts.initialDropPageStagger) or 0
-    local INITIAL_DROP_SECTION_STAGGER = tonumber(opts.initialDropSectionStagger) or 0
-    local INITIAL_DROP_ROW_STAGGER = tonumber(opts.initialDropRowStagger) or 0
+    -- Module-drop (headers only -> rows extend down) should start quickly; keep legacy defaults unless overridden.
+    local usingModuleDrop = (opts and opts.legacyInitialDrop == false)
+
+    local INITIAL_DROP_DELAY
+    if opts and opts.initialDropDelay ~= nil then
+        INITIAL_DROP_DELAY = tonumber(opts.initialDropDelay) or 0
+    else
+        INITIAL_DROP_DELAY = usingModuleDrop and 0.12 or 0.7
+    end
+
+    local INITIAL_DROP_TWEEN_TIME = (opts and opts.initialDropTweenTime ~= nil)
+        and (tonumber(opts.initialDropTweenTime) or 0.40)
+        or (usingModuleDrop and 0.28 or 0.40)
+
+    local INITIAL_DROP_FADE_TIME = (opts and opts.initialDropFadeTime ~= nil)
+        and (tonumber(opts.initialDropFadeTime) or 0.12)
+        or (usingModuleDrop and 0.10 or 0.12)
+
+    local INITIAL_DROP_PAGE_STAGGER = (opts and opts.initialDropPageStagger ~= nil)
+        and (tonumber(opts.initialDropPageStagger) or 0)
+        or 0
+
+    local INITIAL_DROP_SECTION_STAGGER = (opts and opts.initialDropSectionStagger ~= nil)
+        and (tonumber(opts.initialDropSectionStagger) or 0)
+        or 0
+
+    local INITIAL_DROP_ROW_STAGGER = (opts and opts.initialDropRowStagger ~= nil)
+        and (tonumber(opts.initialDropRowStagger) or 0)
+        or (usingModuleDrop and 0.01 or 0)
 
     local activeSearchRowTweens = {}
     local activeSearchSectionTweens = {}
