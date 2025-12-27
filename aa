@@ -2810,6 +2810,73 @@ local WindowMT = {}
 local TabMT = {}
 local SectionMT = {}
 
+local function _nilapiEnsureBuildLog(ui)
+    if not ui or type(ui) ~= "table" then
+        return nil
+    end
+    local log = ui.__nilapiBuildLog
+    if type(log) ~= "table" then
+        log = { version = 1, ops = {}, nextKey = 1 }
+        ui.__nilapiBuildLog = log
+    end
+    if type(log.ops) ~= "table" then
+        log.ops = {}
+    end
+    if type(log.nextKey) ~= "number" then
+        log.nextKey = 1
+    end
+    return log
+end
+
+local function _nilapiAllocKey(ui)
+    local log = _nilapiEnsureBuildLog(ui)
+    if not log then
+        return nil
+    end
+    local k = log.nextKey
+    log.nextKey = k + 1
+    return k
+end
+
+local function _nilapiLog(ui, op)
+    if not ui or type(ui) ~= "table" then
+        return
+    end
+    if ui.__nilapiReplayInProgress then
+        return
+    end
+    local log = _nilapiEnsureBuildLog(ui)
+    if not log then
+        return
+    end
+    log.ops[#log.ops + 1] = op
+end
+
+local function _nilapiSnapshotOptionValues(ui)
+    local out = {}
+    if not ui or type(ui) ~= "table" or type(ui.Options) ~= "table" then
+        return out
+    end
+    for k, opt in pairs(ui.Options) do
+        local name = tostring(k)
+        local v = nil
+        if type(opt) == "table" then
+            if type(opt.GetValue) == "function" then
+                local ok, res = pcall(opt.GetValue, opt)
+                if ok then
+                    v = res
+                end
+            elseif opt.Value ~= nil then
+                v = opt.Value
+            end
+        end
+        if v ~= nil then
+            out[name] = v
+        end
+    end
+    return out
+end
+
 local function _nilapiEnsureOptionTables(ui)
     if not ui or type(ui) ~= "table" then
         return
@@ -2896,6 +2963,18 @@ function TabMT:CreateSection(opts)
         return nil
     end
 
+    local sectionKey = _nilapiAllocKey(self.UI)
+    _nilapiLog(self.UI, {
+        kind = "section",
+        key = sectionKey,
+        tabKey = self.__nilapiKey,
+        side = tostring(opts.side or "Left"),
+        name = opts.name,
+        title = opts.title,
+        icon = normalizeAssetId(opts.icon),
+        height = opts.height,
+    })
+
     local sectionFrame, elements = self.UI.CreateSection({
         parent = panel,
         name = opts.name,
@@ -2904,7 +2983,9 @@ function TabMT:CreateSection(opts)
         height = opts.height,
     })
 
-    return setmetatable({ UI = self.UI, Tab = self, Frame = sectionFrame, Body = elements }, { __index = SectionMT })
+    local sectionObj = setmetatable({ UI = self.UI, Tab = self, Frame = sectionFrame, Body = elements }, { __index = SectionMT })
+    sectionObj.__nilapiKey = sectionKey
+    return sectionObj
 end
 
 function TabMT:Left(nameOrOpts, icon)
@@ -3012,10 +3093,27 @@ function SectionMT:AddToggle(opts)
             end
             opts.callback(built.Checkbox:GetAttribute("AsteriaChecked") == true)
         end)
-        task.defer(function()
-            opts.callback(defaultValue)
-        end)
+        if not (opts._nilapiSkipInitialCallback == true) then
+            task.defer(function()
+                opts.callback(defaultValue)
+            end)
+        end
     end
+
+    _nilapiLog(self.UI, {
+        kind = "control",
+        controlType = "Toggle",
+        sectionKey = self.__nilapiKey,
+        opts = {
+            id = opts.id,
+            name = opts.name,
+            text = opts.text,
+            default = opts.default,
+            keybind = (opts.keybind == true) or (opts.hasKeybind == true),
+            callback = opts.callback,
+            onKeybindChanged = opts.onKeybindChanged,
+        },
+    })
 
     return built
 end
@@ -3037,6 +3135,16 @@ function SectionMT:AddButton(opts)
             opts.callback()
         end)
     end
+
+    _nilapiLog(self.UI, {
+        kind = "control",
+        controlType = "Button",
+        sectionKey = self.__nilapiKey,
+        opts = {
+            name = opts.name,
+            callback = opts.callback,
+        },
+    })
     return btn
 end
 
@@ -3056,6 +3164,17 @@ function SectionMT:AddTextbox(opts)
             opts.callback(built.TextBox.Text)
         end)
     end
+
+    _nilapiLog(self.UI, {
+        kind = "control",
+        controlType = "Textbox",
+        sectionKey = self.__nilapiKey,
+        opts = {
+            name = opts.name,
+            default = opts.default,
+            callback = opts.callback,
+        },
+    })
     return built
 end
 
@@ -3125,6 +3244,20 @@ function SectionMT:AddDropdown(opts)
     end
 
     _nilapiRegisterOption(self.UI, optionApi)
+
+    _nilapiLog(self.UI, {
+        kind = "control",
+        controlType = "Dropdown",
+        sectionKey = self.__nilapiKey,
+        opts = {
+            id = opts.id,
+            name = opts.name,
+            label = opts.label,
+            options = opts.options,
+            default = opts.default,
+            callback = opts.callback,
+        },
+    })
     return built
 end
 
@@ -3200,10 +3333,28 @@ function SectionMT:AddSlider(opts)
             end
             opts.callback(tonumber(built.Row:GetAttribute("SliderValue")))
         end)
-        task.defer(function()
-            opts.callback(tonumber(built.Row:GetAttribute("SliderValue")))
-        end)
+        if not (opts._nilapiSkipInitialCallback == true) then
+            task.defer(function()
+                opts.callback(tonumber(built.Row:GetAttribute("SliderValue")))
+            end)
+        end
     end
+
+    _nilapiLog(self.UI, {
+        kind = "control",
+        controlType = "Slider",
+        sectionKey = self.__nilapiKey,
+        opts = {
+            id = opts.id,
+            name = opts.name,
+            label = opts.label,
+            default = opts.default,
+            min = opts.min,
+            max = opts.max,
+            step = opts.step,
+            callback = opts.callback,
+        },
+    })
 
     return built
 end
@@ -3257,6 +3408,7 @@ local function attachBuilder(controller)
 
     -- Public registries (Vape-style): ui.Options / ui.Toggles / ui.Flags.
     _nilapiEnsureOptionTables(controller)
+    _nilapiEnsureBuildLog(controller)
 
     controller.GetOption = function(selfOrName, maybeName)
         local name = maybeName
@@ -3293,12 +3445,22 @@ local function attachBuilder(controller)
             local name = tostring(opts.name or opts.text or "Tab")
             local icon = normalizeAssetId(opts.icon)
 
+            local tabKey = _nilapiAllocKey(self)
+            _nilapiLog(self, {
+                kind = "tab",
+                key = tabKey,
+                name = name,
+                icon = icon,
+            })
+
             if rawCreateTab then
                 rawCreateTab(name, icon)
             end
             local page = rawCreatePage and rawCreatePage(name)
 
-            return setmetatable({ UI = self, Name = name, Page = page, _left = nil, _right = nil }, { __index = TabMT })
+            local tabObj = setmetatable({ UI = self, Name = name, Page = page, _left = nil, _right = nil }, { __index = TabMT })
+            tabObj.__nilapiKey = tabKey
+            return tabObj
         end
 
         if rawCreateTab then
@@ -3344,6 +3506,7 @@ local function attachBuilder(controller)
         if tabName == nil then
             tabName = selfOrName
         end
+        controller.__nilapiLastActiveTab = tostring(tabName or "")
         if rawSetActiveTab then
             return rawSetActiveTab(tostring(tabName or ""))
         end
@@ -3384,6 +3547,78 @@ local function attachBuilder(controller)
 
     setmetatable(controller, { __index = WindowMT })
     return controller
+end
+
+local function _nilapiReplayBuild(controller, buildLog)
+    if not controller or type(controller) ~= "table" then
+        return
+    end
+    if not buildLog or type(buildLog) ~= "table" or type(buildLog.ops) ~= "table" then
+        return
+    end
+
+    controller.__nilapiBuildLog = buildLog
+    controller.__nilapiReplayInProgress = true
+
+    local tabsByKey = {}
+    local sectionsByKey = {}
+
+    for _, op in ipairs(buildLog.ops) do
+        if type(op) == "table" then
+            if op.kind == "tab" then
+                local tab = controller:CreateTab({ name = op.name, icon = op.icon })
+                if tab then
+                    tab.__nilapiKey = op.key
+                    tabsByKey[op.key] = tab
+                end
+            elseif op.kind == "section" then
+                local tab = tabsByKey[op.tabKey]
+                if tab then
+                    local section = tab:CreateSection({
+                        side = op.side,
+                        name = op.name,
+                        title = op.title,
+                        icon = op.icon,
+                        height = op.height,
+                    })
+                    if section then
+                        section.__nilapiKey = op.key
+                        sectionsByKey[op.key] = section
+                    end
+                end
+            elseif op.kind == "control" then
+                local section = sectionsByKey[op.sectionKey]
+                if section then
+                    local o = op.opts or {}
+                    o._nilapiSkipInitialCallback = true
+                    if op.controlType == "Toggle" then
+                        section:AddToggle(o)
+                    elseif op.controlType == "Slider" then
+                        section:AddSlider(o)
+                    elseif op.controlType == "Dropdown" then
+                        section:AddDropdown(o)
+                    elseif op.controlType == "Button" then
+                        section:AddButton(o)
+                    elseif op.controlType == "Textbox" then
+                        section:AddTextbox(o)
+                    end
+                end
+            end
+        end
+    end
+
+    controller.__nilapiReplayInProgress = false
+end
+
+local function _nilapiApplyOptionValues(controller, values)
+    if not controller or type(controller) ~= "table" or type(values) ~= "table" then
+        return
+    end
+    for name, v in pairs(values) do
+        if controller.SetOption then
+            pcall(controller.SetOption, controller, tostring(name), v, false)
+        end
+    end
 end
 
 -- Fancy keybinds display (floating card)
@@ -24087,6 +24322,8 @@ local function createAsteriaGUI(title, opts)
         accentBlack = ACCENT_BLACK,
     })
 
+    local controllerRef = nil
+
 
 
     -- Wire command-bar "reload" to rebuild this UI instance.
@@ -24105,6 +24342,25 @@ local function createAsteriaGUI(title, opts)
         reloadOpts.buildDefaultContent = buildDefaultContent
 
         reloadUI = function()
+            local buildLog = nil
+            local optionValues = nil
+            local restoreTab = nil
+            if controllerRef and type(controllerRef) == "table" then
+                buildLog = controllerRef.__nilapiBuildLog
+                optionValues = _nilapiSnapshotOptionValues(controllerRef)
+                restoreTab = controllerRef.__nilapiLastActiveTab
+            end
+
+            if type(buildLog) == "table" then
+                reloadOpts._nilapiBuildLog = buildLog
+            end
+            if type(optionValues) == "table" then
+                reloadOpts._nilapiOptionValues = optionValues
+            end
+            if restoreTab ~= nil then
+                reloadOpts._nilapiRestoreActiveTab = tostring(restoreTab)
+            end
+
             if screenGui and screenGui.Parent ~= nil then
                 if keybindsDisplay and type(keybindsDisplay.Destroy) == "function" then
                     pcall(function()
@@ -24182,6 +24438,22 @@ local function createAsteriaGUI(title, opts)
 
     controller = attachBuilder(controller)
 
+    controllerRef = controller
+
+    -- Internal: if a reload passed a recorded API-build log, replay it now.
+    if opts and type(opts._nilapiBuildLog) == "table" then
+        pcall(function()
+            _nilapiReplayBuild(controller, opts._nilapiBuildLog)
+        end)
+    end
+
+    -- Internal: restore option values after replay (silent).
+    if opts and type(opts._nilapiOptionValues) == "table" then
+        pcall(function()
+            _nilapiApplyOptionValues(controller, opts._nilapiOptionValues)
+        end)
+    end
+
     -- Optional: allow the caller to finalize layout after everything exists.
     if opts and type(opts.onAfterBuild) == "function" then
         pcall(function()
@@ -24189,8 +24461,19 @@ local function createAsteriaGUI(title, opts)
         end)
     end
 
+    local restoredActiveTab = false
+    if opts and opts._nilapiRestoreActiveTab ~= nil then
+        local t = tostring(opts._nilapiRestoreActiveTab or "")
+        if t ~= "" then
+            restoredActiveTab = true
+            pcall(function()
+                setActiveTab(t)
+            end)
+        end
+    end
+
     -- Optional: pick an initial tab after build (helps prevent a "blank" page).
-    if opts and opts.initialActiveTab ~= nil then
+    if (not restoredActiveTab) and opts and opts.initialActiveTab ~= nil then
         local initialTab = tostring(opts.initialActiveTab or "")
         if initialTab ~= "" then
             pcall(function()
