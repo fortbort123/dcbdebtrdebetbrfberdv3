@@ -1,4 +1,4 @@
---[==[a
+--a
 -- nilapi.lua
 -- NilHub-style UI builder API (base window only; build UI via calls)
 -- Executor usage:
