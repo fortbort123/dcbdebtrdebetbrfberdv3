@@ -2745,6 +2745,61 @@ local function attachBuilder(controller)
         return controller
     end
     controller.__builderAttached = true
+
+    -- Important: the controller already defines CreateTab/CreatePage/etc.
+    -- Metatable __index won't override existing keys, so we wrap CreateTab
+    -- to provide the builder behavior when passed a table.
+    local rawCreateTab = controller.CreateTab
+    local rawCreatePage = controller.CreatePage
+    local rawCreatePanel = controller.CreatePanel
+    local rawCreateSection = controller.CreateSection
+
+    controller.__raw = controller.__raw or {}
+    controller.__raw.CreateTab = controller.__raw.CreateTab or rawCreateTab
+    controller.__raw.CreatePage = controller.__raw.CreatePage or rawCreatePage
+    controller.__raw.CreatePanel = controller.__raw.CreatePanel or rawCreatePanel
+    controller.__raw.CreateSection = controller.__raw.CreateSection or rawCreateSection
+
+    controller.CreateTab = function(self, optsOrName, iconAsset)
+        if type(optsOrName) == "table" then
+            local opts = optsOrName
+            local name = tostring(opts.name or opts.text or "Tab")
+            local icon = tostring(opts.icon or "")
+
+            if rawCreateTab then
+                rawCreateTab(name, icon)
+            end
+            local page = rawCreatePage and rawCreatePage(name)
+
+            return setmetatable({ UI = self, Name = name, Page = page, _left = nil, _right = nil }, { __index = TabMT })
+        end
+
+        if rawCreateTab then
+            return rawCreateTab(optsOrName, iconAsset)
+        end
+        return nil
+    end
+
+    -- Preserve raw passthroughs (and make sure "self" doesn't get lost).
+    controller.CreatePage = function(self, tabText)
+        if rawCreatePage then
+            return rawCreatePage(tabText)
+        end
+        return nil
+    end
+    controller.CreatePanel = function(self, panelOpts)
+        if rawCreatePanel then
+            return rawCreatePanel(panelOpts)
+        end
+        return nil
+    end
+    controller.CreateSection = function(self, sectionOpts)
+        if rawCreateSection then
+            return rawCreateSection(sectionOpts)
+        end
+        return nil
+    end
+
     setmetatable(controller, { __index = WindowMT })
     return controller
 end
