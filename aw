@@ -1,4 +1,4 @@
---[==[
+--hjr
 -- nilapi.lua
 -- NilHub-style UI builder API (base window only; build UI via calls)
 -- Executor usage:
@@ -2791,19 +2791,31 @@ local function attachBuilder(controller)
     end
 
     -- Preserve raw passthroughs (and make sure "self" doesn't get lost).
-    controller.CreatePage = function(self, tabText)
+    controller.CreatePage = function(selfOrTabText, maybeTabText)
+        local tabText = maybeTabText
+        if tabText == nil then
+            tabText = selfOrTabText
+        end
         if rawCreatePage then
             return rawCreatePage(tabText)
         end
         return nil
     end
-    controller.CreatePanel = function(self, panelOpts)
+    controller.CreatePanel = function(selfOrOpts, maybeOpts)
+        local panelOpts = maybeOpts
+        if panelOpts == nil then
+            panelOpts = selfOrOpts
+        end
         if rawCreatePanel then
             return rawCreatePanel(panelOpts)
         end
         return nil
     end
-    controller.CreateSection = function(self, sectionOpts)
+    controller.CreateSection = function(selfOrOpts, maybeOpts)
+        local sectionOpts = maybeOpts
+        if sectionOpts == nil then
+            sectionOpts = selfOrOpts
+        end
         if rawCreateSection then
             return rawCreateSection(sectionOpts)
         end
