@@ -1,5 +1,4 @@
--- =
---[==[
+--[==[a
 -- nilapi.lua
 -- NilHub-style UI builder API (base window only; build UI via calls)
 -- Executor usage:
@@ -2754,12 +2753,22 @@ local function attachBuilder(controller)
     local rawCreatePage = controller.CreatePage
     local rawCreatePanel = controller.CreatePanel
     local rawCreateSection = controller.CreateSection
+    local rawSetActiveTab = controller.SetActiveTab
+    local rawShow = controller.show or controller.Show
+    local rawHide = controller.hide or controller.Hide
+    local rawDestroy = controller.destroy or controller.Destroy
+    local rawGetGui = controller.GetGui
 
     controller.__raw = controller.__raw or {}
     controller.__raw.CreateTab = controller.__raw.CreateTab or rawCreateTab
     controller.__raw.CreatePage = controller.__raw.CreatePage or rawCreatePage
     controller.__raw.CreatePanel = controller.__raw.CreatePanel or rawCreatePanel
     controller.__raw.CreateSection = controller.__raw.CreateSection or rawCreateSection
+    controller.__raw.SetActiveTab = controller.__raw.SetActiveTab or rawSetActiveTab
+    controller.__raw.Show = controller.__raw.Show or rawShow
+    controller.__raw.Hide = controller.__raw.Hide or rawHide
+    controller.__raw.Destroy = controller.__raw.Destroy or rawDestroy
+    controller.__raw.GetGui = controller.__raw.GetGui or rawGetGui
 
     controller.CreateTab = function(self, optsOrName, iconAsset)
         if type(optsOrName) == "table" then
@@ -2799,6 +2808,49 @@ local function attachBuilder(controller)
             return rawCreateSection(sectionOpts)
         end
         return nil
+    end
+
+    controller.SetActiveTab = function(selfOrName, maybeName)
+        local tabName = maybeName
+        if tabName == nil then
+            tabName = selfOrName
+        end
+        if rawSetActiveTab then
+            return rawSetActiveTab(tostring(tabName or ""))
+        end
+        return nil
+    end
+
+    -- Convenience: allow ':' style for these too.
+    controller.Show = function(self)
+        if rawShow then
+            return rawShow()
+        end
+        if self and self.screenGui then
+            self.screenGui.Enabled = true
+        end
+    end
+    controller.Hide = function(self)
+        if rawHide then
+            return rawHide()
+        end
+        if self and self.screenGui then
+            self.screenGui.Enabled = false
+        end
+    end
+    controller.Destroy = function(self)
+        if rawDestroy then
+            return rawDestroy()
+        end
+        if self and self.screenGui then
+            self.screenGui:Destroy()
+        end
+    end
+    controller.GetGui = function(self)
+        if rawGetGui then
+            return rawGetGui()
+        end
+        return self and self.screenGui
     end
 
     setmetatable(controller, { __index = WindowMT })
