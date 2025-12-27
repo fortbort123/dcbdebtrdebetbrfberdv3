@@ -1224,6 +1224,7 @@ local player = Players.LocalPlayer
 
 -- Forward declaration so the command bar can trigger a full rebuild.
 local reloadUI
+local __nilapi_reloadUI_raw
 
 -- Generate random GUI name for security
 local function generateRandomName()
@@ -2754,6 +2755,11 @@ local WindowMT = {}
 local TabMT = {}
 local SectionMT = {}
 
+-- Build recording (so command-bar Reload can restore API-built tabs/sections).
+local __nilapi_lastBuildActions
+local __nilapi_lastActiveTab
+local __nilapi_reloadWrapped = false
+
 local function _nilapiEnsureOptionTables(ui)
     if not ui or type(ui) ~= "table" then
         return
@@ -2848,7 +2854,29 @@ function TabMT:CreateSection(opts)
         height = opts.height,
     })
 
-    return setmetatable({ UI = self.UI, Tab = self, Frame = sectionFrame, Body = elements }, { __index = SectionMT })
+    local sectionObj = setmetatable({
+        UI = self.UI,
+        Tab = self,
+        Frame = sectionFrame,
+        Body = elements,
+        Name = tostring(opts.name or opts.title or "Section"),
+        Side = normalizeSide(opts.side),
+        Icon = normalizeAssetId(opts.icon),
+        Height = opts.height,
+    }, { __index = SectionMT })
+
+    if self.UI and type(self.UI.__recordAction) == "function" then
+        self.UI:__recordAction({
+            k = "section",
+            tab = tostring(self.Name or ""),
+            side = sectionObj.Side,
+            name = sectionObj.Name,
+            icon = sectionObj.Icon,
+            height = opts.height,
+        })
+    end
+
+    return sectionObj
 end
 
 function TabMT:Left(nameOrOpts, icon)
@@ -2869,6 +2897,15 @@ end
 
 function SectionMT:AddToggle(opts)
     opts = opts or {}
+    if self.UI and type(self.UI.__recordAction) == "function" then
+        self.UI:__recordAction({
+            k = "toggle",
+            tab = tostring(self.Tab and self.Tab.Name or ""),
+            side = tostring(self.Side or "Left"),
+            section = tostring(self.Name or ""),
+            opts = opts,
+        })
+    end
     local deps = self.UI and self.UI._internals
     local built = apiCreateToggleRowStyled(deps, {
         id = opts.id,
@@ -2973,6 +3010,15 @@ end
 
 function SectionMT:AddButton(opts)
     opts = opts or {}
+    if self.UI and type(self.UI.__recordAction) == "function" then
+        self.UI:__recordAction({
+            k = "button",
+            tab = tostring(self.Tab and self.Tab.Name or ""),
+            side = tostring(self.Side or "Left"),
+            section = tostring(self.Name or ""),
+            opts = opts,
+        })
+    end
     local deps = self.UI and self.UI._internals
     local btn = apiCreateActionButtonStyled(deps, opts)
     btn.Parent = self.Body
@@ -2993,6 +3039,15 @@ end
 
 function SectionMT:AddTextbox(opts)
     opts = opts or {}
+    if self.UI and type(self.UI.__recordAction) == "function" then
+        self.UI:__recordAction({
+            k = "textbox",
+            tab = tostring(self.Tab and self.Tab.Name or ""),
+            side = tostring(self.Side or "Left"),
+            section = tostring(self.Name or ""),
+            opts = opts,
+        })
+    end
     local built = apiCreateTextboxRowStyled(opts)
     built.Row.Parent = self.Body
     if type(opts.callback) == "function" then
@@ -3012,6 +3067,15 @@ end
 
 function SectionMT:AddDropdown(opts)
     opts = opts or {}
+    if self.UI and type(self.UI.__recordAction) == "function" then
+        self.UI:__recordAction({
+            k = "dropdown",
+            tab = tostring(self.Tab and self.Tab.Name or ""),
+            side = tostring(self.Side or "Left"),
+            section = tostring(self.Name or ""),
+            opts = opts,
+        })
+    end
     local deps = self.UI and self.UI._internals
     local built = apiCreateDropdownRowStyled(deps, opts)
     built.Row.Parent = self.Body
@@ -3081,6 +3145,15 @@ end
 
 function SectionMT:AddSlider(opts)
     opts = opts or {}
+    if self.UI and type(self.UI.__recordAction) == "function" then
+        self.UI:__recordAction({
+            k = "slider",
+            tab = tostring(self.Tab and self.Tab.Name or ""),
+            side = tostring(self.Side or "Left"),
+            section = tostring(self.Name or ""),
+            opts = opts,
+        })
+    end
     local built = apiCreateSliderRowStyled(opts)
     built.Row.Parent = self.Body
 
@@ -3202,6 +3275,92 @@ local function attachBuilder(controller)
     -- Public registries (Vape-style): ui.Options / ui.Toggles / ui.Flags.
     _nilapiEnsureOptionTables(controller)
 
+    -- Build recording (so reload restores user-built content).
+    controller.__buildActions = controller.__buildActions or {}
+    controller.__replayingBuild = false
+
+    controller.__recordAction = function(self, action)
+        if controller.__replayingBuild then
+            return
+        end
+        if type(action) ~= "table" then
+            return
+        end
+        table.insert(controller.__buildActions, action)
+        __nilapi_lastBuildActions = controller.__buildActions
+    end
+
+    controller.GetBuildActions = function(self)
+        return controller.__buildActions
+    end
+
+    controller.ReplayBuildActions = function(self, actions)
+        if type(actions) ~= "table" then
+            return
+        end
+
+        controller.__replayingBuild = true
+
+        local tabsByName = {}
+        local sectionsByKey = {}
+
+        local function getTab(name, icon)
+            name = tostring(name or "")
+            if name == "" then
+                return nil
+            end
+            if tabsByName[name] then
+                return tabsByName[name]
+            end
+            local t = controller:Tab(name, icon)
+            tabsByName[name] = t
+            return t
+        end
+
+        local function getSection(tabName, side, sectionName, icon, height)
+            local t = getTab(tabName)
+            if not t then
+                return nil
+            end
+            local s = tostring(side or "Left")
+            local n = tostring(sectionName or "Section")
+            local key = tostring(tabName or "") .. "|" .. s .. "|" .. n
+            if sectionsByKey[key] then
+                return sectionsByKey[key]
+            end
+            local sec = t:CreateSection({ side = s, name = n, icon = icon, height = height })
+            sectionsByKey[key] = sec
+            return sec
+        end
+
+        for _, a in ipairs(actions) do
+            if type(a) == "table" then
+                if a.k == "tab" then
+                    getTab(a.name, a.icon)
+                elseif a.k == "section" then
+                    getSection(a.tab, a.side, a.name, a.icon, a.height)
+                elseif a.k == "toggle" then
+                    local sec = getSection(a.tab, a.side, a.section)
+                    if sec then sec:AddToggle(a.opts) end
+                elseif a.k == "slider" then
+                    local sec = getSection(a.tab, a.side, a.section)
+                    if sec then sec:AddSlider(a.opts) end
+                elseif a.k == "dropdown" then
+                    local sec = getSection(a.tab, a.side, a.section)
+                    if sec then sec:AddDropdown(a.opts) end
+                elseif a.k == "textbox" then
+                    local sec = getSection(a.tab, a.side, a.section)
+                    if sec then sec:AddTextbox(a.opts) end
+                elseif a.k == "button" then
+                    local sec = getSection(a.tab, a.side, a.section)
+                    if sec then sec:AddButton(a.opts) end
+                end
+            end
+        end
+
+        controller.__replayingBuild = false
+    end
+
     controller.GetOption = function(selfOrName, maybeName)
         local name = maybeName
         if name == nil then
@@ -3241,6 +3400,8 @@ local function attachBuilder(controller)
                 rawCreateTab(name, icon)
             end
             local page = rawCreatePage and rawCreatePage(name)
+
+            controller:__recordAction({ k = "tab", name = name, icon = icon })
 
             return setmetatable({ UI = self, Name = name, Page = page, _left = nil, _right = nil }, { __index = TabMT })
         end
@@ -3288,6 +3449,8 @@ local function attachBuilder(controller)
         if tabName == nil then
             tabName = selfOrName
         end
+        controller.__activeTabName = tostring(tabName or "")
+        __nilapi_lastActiveTab = controller.__activeTabName
         if rawSetActiveTab then
             return rawSetActiveTab(tostring(tabName or ""))
         end
@@ -3327,6 +3490,34 @@ local function attachBuilder(controller)
     end
 
     setmetatable(controller, { __index = WindowMT })
+
+    -- Wrap command-bar reload once so it restores API-built content.
+    -- IMPORTANT: createAsteriaGUI updates __nilapi_reloadUI_raw, not reloadUI.
+    if not __nilapi_reloadWrapped then
+        __nilapi_reloadWrapped = true
+        reloadUI = function(...)
+            if type(__nilapi_reloadUI_raw) ~= "function" then
+                return nil
+            end
+
+            local newController = __nilapi_reloadUI_raw(...)
+            if newController and type(newController) == "table" and type(newController.ReplayBuildActions) == "function" then
+                if type(__nilapi_lastBuildActions) == "table" then
+                    newController.__buildActions = __nilapi_lastBuildActions
+                    pcall(function()
+                        newController:ReplayBuildActions(__nilapi_lastBuildActions)
+                    end)
+                end
+                if __nilapi_lastActiveTab and __nilapi_lastActiveTab ~= "" and type(newController.SetActiveTab) == "function" then
+                    pcall(function()
+                        newController:SetActiveTab(__nilapi_lastActiveTab)
+                    end)
+                end
+            end
+            return newController
+        end
+    end
+
     return controller
 end
 
@@ -23846,7 +24037,10 @@ local function createAsteriaGUI(title, opts)
                 if child:IsA("TextButton") then
                     local holder = child:FindFirstChild("ContentHolder")
                     local label = holder and holder:FindFirstChild("TabLabel")
-                    local isSelected = label and label:IsA("TextLabel") and label.Text == tabText
+                    local isSelected = label
+                        and label:IsA("TextLabel")
+                        and tostring(label.Text or ""):gsub("%s+", ""):gsub(" ", "")
+                            == tostring(tabText or ""):gsub("%s+", ""):gsub(" ", "")
                     setTabButtonSelected(child, isSelected)
                 end
             end
@@ -24048,7 +24242,7 @@ local function createAsteriaGUI(title, opts)
         reloadOpts.buildTabs = buildTabs
         reloadOpts.buildDefaultContent = buildDefaultContent
 
-        reloadUI = function()
+        __nilapi_reloadUI_raw = function()
             if screenGui and screenGui.Parent ~= nil then
                 if keybindsDisplay and type(keybindsDisplay.Destroy) == "function" then
                     pcall(function()
