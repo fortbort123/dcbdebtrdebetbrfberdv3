@@ -23859,16 +23859,16 @@ local function createAsteriaGUI(title, opts)
             if tabScroll then
                 for _, child in ipairs(tabScroll:GetChildren()) do
                     if child:IsA("TextButton") then
-                        local holder = child:FindFirstChild("ContentHolder")
-                        local label = holder and holder:FindFirstChild("TabLabel")
-                        if label and label:IsA("TextLabel") then
-                            child.MouseButton1Click:Connect(function()
+                        child.MouseButton1Click:Connect(function()
+                            local holder = child:FindFirstChild("ContentHolder")
+                            local label = holder and holder:FindFirstChild("TabLabel")
+                            if label and label:IsA("TextLabel") then
                                 local tabText = label.Text
                                 if pagesByTabText[tabText] then
                                     setActiveTab(tabText)
                                 end
-                            end)
-                        end
+                            end
+                        end)
                     end
                 end
             end
