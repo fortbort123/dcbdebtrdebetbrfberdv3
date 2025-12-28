@@ -871,6 +871,15 @@ local function installUniversalSliderBindings(rootGui, opts)
             bindSliderRow(inst)
         end
     end
+
+    -- Also bind any sliders added later (e.g., by the builder API)
+    rootGui.DescendantAdded:Connect(function(inst)
+        if inst:IsA("Frame") and type(inst.Name) == "string" and inst.Name:find("SliderRow") then
+            task.defer(function()
+                bindSliderRow(inst)
+            end)
+        end
+    end)
 end
 
 -- Final accent recolor pass: replace any leftover red with pastel pink.
@@ -22172,9 +22181,16 @@ local function createAsteriaGUI(title, opts)
             sliderRow.BorderSizePixel = 0
             sliderRow.Size = UDim2.new(1, 0, 0, 44)
 
-            sliderRow:SetAttribute("AsteriaSliderMin", tonumber(minValue) or 0)
-            sliderRow:SetAttribute("AsteriaSliderMax", tonumber(maxValue) or 100)
-            sliderRow:SetAttribute("AsteriaSliderStep", tonumber(stepValue) or 1)
+            local minV = tonumber(minValue) or 0
+            local maxV = tonumber(maxValue) or 100
+            local stepV = tonumber(stepValue) or 1
+            if stepV <= 0 then stepV = 1 end
+            if maxV == minV then maxV = minV + stepV end
+
+            sliderRow:SetAttribute("AsteriaSliderMin", minV)
+            sliderRow:SetAttribute("AsteriaSliderMax", maxV)
+            sliderRow:SetAttribute("AsteriaSliderStep", stepV)
+            sliderRow:SetAttribute("AsteriaSliderBound", true) -- Mark as self-bound
 
             local labelFrame = Instance.new("Frame")
             labelFrame.Name = "Frame"
@@ -22207,7 +22223,7 @@ local function createAsteriaGUI(title, opts)
             valueBox.Font = Enum.Font.Code
             valueBox.TextSize = 14
             valueBox.TextColor3 = Color3.fromRGB(160, 160, 165)
-            valueBox.Text = tostring(defaultValue or 0)
+            valueBox.Text = tostring(defaultValue or minV)
             valueBox.ClearTextOnFocus = false
             valueBox.Parent = labelFrame
 
@@ -22255,10 +22271,9 @@ local function createAsteriaGUI(title, opts)
 
             local fill = Instance.new("Frame")
             fill.Name = "FillBar"
-            -- Use white base so UIGradient colors render as-authored (black→pink)
             fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             fill.BorderSizePixel = 0
-            fill.Size = UDim2.new(0.5, 0, 1, 0)
+            fill.Size = UDim2.new(0, 0, 1, 0)
             fill.ZIndex = 2
             fill.Parent = track
 
@@ -22284,7 +22299,7 @@ local function createAsteriaGUI(title, opts)
             handle.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
             handle.BorderSizePixel = 0
             handle.AnchorPoint = Vector2.new(0.5, 0.5)
-            handle.Position = UDim2.new(0.5, 0, 0.5, 0)
+            handle.Position = UDim2.new(0, 0, 0.5, 0)
             handle.Size = UDim2.new(0, 12, 0, 12)
             handle.ZIndex = 3
             handle.Parent = trackArea
@@ -22303,10 +22318,188 @@ local function createAsteriaGUI(title, opts)
             clickArea.ZIndex = 4
             clickArea.Parent = trackArea
 
+            -- Bubble value display (appears while dragging)
+            local bubble = Instance.new("TextLabel")
+            bubble.Name = "DragBubbleValue"
+            bubble.AnchorPoint = Vector2.new(0.5, 1)
+            bubble.Position = UDim2.new(0, 0, 0, -4)
+            bubble.Size = UDim2.new(0, 28, 0, 18)
+            bubble.BackgroundTransparency = 1
+            bubble.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            bubble.BorderSizePixel = 0
+            bubble.Text = tostring(defaultValue or minV)
+            bubble.TextColor3 = Color3.fromRGB(230, 230, 230)
+            bubble.TextTransparency = 1
+            bubble.Font = Enum.Font.Code
+            bubble.TextSize = 14
+            bubble.TextXAlignment = Enum.TextXAlignment.Center
+            bubble.TextYAlignment = Enum.TextYAlignment.Center
+            bubble.Visible = false
+            bubble.ZIndex = 5
+            bubble.Parent = trackArea
+
+            local bubbleCorner = Instance.new("UICorner")
+            bubbleCorner.CornerRadius = UDim.new(0, 6)
+            bubbleCorner.Parent = bubble
+
+            local bubbleStroke = Instance.new("UIStroke")
+            bubbleStroke.Thickness = 1
+            bubbleStroke.Transparency = 0.8
+            bubbleStroke.Color = Color3.fromRGB(40, 43, 46)
+            bubbleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            bubbleStroke.LineJoinMode = Enum.LineJoinMode.Round
+            bubbleStroke.Parent = bubble
+
             attachPurpose(sliderRow, purpose)
             setZIndexRecursive(sliderRow, 4)
             sliderRow.Parent = elementsContainer
 
+            -- Slider logic (inline, matches original UI behavior)
+            local currentValue = tonumber(defaultValue) or minV
+
+            local function roundToStep(v)
+                v = tonumber(v) or minV
+                local snapped = math.floor((v - minV) / stepV + 0.5) * stepV + minV
+                return math.clamp(snapped, minV, maxV)
+            end
+
+            local function ratioFromValue(v)
+                return math.clamp((v - minV) / (maxV - minV), 0, 1)
+            end
+
+            local function applyVisual(r)
+                fill.Size = UDim2.new(r, 0, 1, 0)
+                handle.Position = UDim2.new(r, 0, 0.5, 0)
+                bubble.Position = UDim2.new(r, 0, 0, -4)
+            end
+
+            local bubbleTweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local function showBubble()
+                bubble.Visible = true
+                TweenService:Create(bubble, bubbleTweenInfo, {
+                    BackgroundTransparency = 0,
+                    TextTransparency = 0,
+                }):Play()
+            end
+
+            local function hideBubble()
+                TweenService:Create(bubble, bubbleTweenInfo, {
+                    BackgroundTransparency = 1,
+                    TextTransparency = 1,
+                }):Play()
+                task.delay(0.12, function()
+                    if bubble and bubble.Parent and bubble.TextTransparency >= 0.95 then
+                        bubble.Visible = false
+                    end
+                end)
+            end
+
+            local handleSizeTweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local handleTween = nil
+            local function tweenHandleSize(target)
+                if handleTween then
+                    handleTween:Cancel()
+                    handleTween = nil
+                end
+                handleTween = TweenService:Create(handle, handleSizeTweenInfo, { Size = target })
+                handleTween:Play()
+            end
+
+            local function setValue(v, tween)
+                currentValue = roundToStep(v)
+                sliderRow:SetAttribute("SliderValue", currentValue)
+                valueBox.Text = tostring(currentValue)
+                bubble.Text = tostring(currentValue)
+
+                local r = ratioFromValue(currentValue)
+                if tween then
+                    TweenService:Create(fill, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(r, 0, 1, 0),
+                    }):Play()
+                    TweenService:Create(handle, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.new(r, 0, 0.5, 0),
+                    }):Play()
+                    bubble.Position = UDim2.new(r, 0, 0, -4)
+                else
+                    applyVisual(r)
+                end
+            end
+
+            local function ratioFromInputX(x)
+                local absPos = track.AbsolutePosition
+                local absSize = track.AbsoluteSize
+                if absSize.X <= 0 then
+                    return 0
+                end
+                return math.clamp((x - absPos.X) / absSize.X, 0, 1)
+            end
+
+            local dragging = false
+            local renderConn = nil
+            local endConn = nil
+
+            local function stopDrag()
+                dragging = false
+                if renderConn then
+                    renderConn:Disconnect()
+                    renderConn = nil
+                end
+                if endConn then
+                    endConn:Disconnect()
+                    endConn = nil
+                end
+                hideBubble()
+                tweenHandleSize(UDim2.new(0, 12, 0, 12))
+            end
+
+            local function startDrag()
+                if dragging then
+                    return
+                end
+                dragging = true
+                showBubble()
+                tweenHandleSize(UDim2.new(0, 13.8, 0, 13.8))
+
+                renderConn = RunService.RenderStepped:Connect(function()
+                    if not dragging then
+                        return
+                    end
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local r = ratioFromInputX(mousePos.X)
+                    setValue(minV + (maxV - minV) * r, false)
+                end)
+
+                endConn = UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1
+                        or input.UserInputType == Enum.UserInputType.Touch then
+                        stopDrag()
+                    end
+                end)
+            end
+
+            clickArea.InputBegan:Connect(function(input)
+                if input.UserInputType ~= Enum.UserInputType.MouseButton1
+                    and input.UserInputType ~= Enum.UserInputType.Touch then
+                    return
+                end
+                local r = ratioFromInputX(input.Position.X)
+                setValue(minV + (maxV - minV) * r, true)
+                startDrag()
+            end)
+
+            valueBox.FocusLost:Connect(function()
+                local n = tonumber(valueBox.Text)
+                if n == nil then
+                    valueBox.Text = tostring(currentValue)
+                    return
+                end
+                setValue(n, true)
+            end)
+
+            -- Initialize with default value
+            setValue(tonumber(defaultValue) or minV, false)
+
+            -- Fire callback on value changes
             if type(callback) == "function" then
                 sliderRow:GetAttributeChangedSignal("SliderValue"):Connect(function()
                     callback(tonumber(sliderRow:GetAttribute("SliderValue")))
@@ -22430,7 +22623,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v3"
+Api.__build = "workspace-local-2025-12-28-v5"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
