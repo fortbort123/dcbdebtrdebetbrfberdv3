@@ -21908,8 +21908,12 @@ local function createAsteriaGUI(title, opts)
             elementsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
             elementsLayout.Parent = elementsContainer
 
-            -- Auto-size the section to the current number of rows (shrink to fit),
-            -- while keeping a maximum height so long sections still scroll.
+            -- Auto-size the section to its content, but keep it sane:
+            -- - Accurate: use the ScrollingFrame's computed canvas height (includes padding/layout)
+            -- - Stable: clamp to [minHeight, maxHeight] so it won't become a tiny box
+            local MIN_SECTION_HEIGHT_PX = 132 -- header(36) + padding + ~2 rows (keeps it from looking "ass")
+            local EXTRA_BUFFER_PX = 6
+
             local function computeDesiredFullHeight()
                 local padTop = 10
                 local padBottom = 12
@@ -21919,21 +21923,26 @@ local function createAsteriaGUI(title, opts)
                 end
 
                 local contentY = 0
-                if elementsLayout then
+                -- Prefer the actual canvas height (more accurate than layout size during tweens).
+                local okCanvas, absCanvas = pcall(function()
+                    return elementsContainer.AbsoluteCanvasSize
+                end)
+                if okCanvas and typeof(absCanvas) == "Vector2" then
+                    contentY = tonumber(absCanvas.Y) or 0
+                elseif elementsLayout then
                     contentY = tonumber(elementsLayout.AbsoluteContentSize.Y) or 0
                 end
 
-                -- Header (36) + padding + content.
-                local desired = 36 + padTop + padBottom + contentY
+                -- If we used AbsoluteCanvasSize, it already includes padding; if not, add padding.
+                local desired
+                if okCanvas and typeof(absCanvas) == "Vector2" then
+                    desired = 36 + contentY + EXTRA_BUFFER_PX
+                else
+                    desired = 36 + padTop + padBottom + contentY + EXTRA_BUFFER_PX
+                end
 
-                -- Keep within the max height.
-                if desired > sectionMaxHeight then
-                    return sectionMaxHeight
-                end
-                -- Never smaller than header.
-                if desired < 36 then
-                    return 36
-                end
+                local minH = math.min(sectionMaxHeight, MIN_SECTION_HEIGHT_PX)
+                desired = math.clamp(desired, minH, sectionMaxHeight)
                 return desired
             end
 
@@ -22975,7 +22984,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v17-autosize-sections"
+Api.__build = "workspace-local-2025-12-28-v18-autosize-fix"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
