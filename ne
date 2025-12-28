@@ -20618,6 +20618,7 @@ local function createAsteriaGUI(title, opts)
     -- Initial load: show only headers, then drop modules in after 1s
     local initialDropPlayed = false
     local initialDropHolding = false
+    local builderSectionsToAnimate = {}
 
     local function getSectionFrameFromElementsContainer(elementsContainer)
         if elementsContainer
@@ -21664,8 +21665,6 @@ local function createAsteriaGUI(title, opts)
         accentPrimary = ACCENT_PRIMARY,
         accentBlack = ACCENT_BLACK,
     })
-
-    local builderSectionsToAnimate = {}
 
     local builderApi = nil
     if layoutMode ~= "default" then
@@ -22883,7 +22882,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v11-debug2"
+Api.__build = "workspace-local-2025-12-28-v12-scopefix"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
