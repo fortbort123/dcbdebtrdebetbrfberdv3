@@ -1,4 +1,4 @@
--- Asteria Hub Universal GUI - Local Script Version
+-- Asteria Hub Univsdaersal GUI - Local Script Version
 -- Execute this directly in your executor
 
 local Players = game:GetService("Players")
@@ -22253,22 +22253,38 @@ local function createAsteriaGUI(title, opts)
 
             local fill = Instance.new("Frame")
             fill.Name = "FillBar"
+            -- Use white base so UIGradient colors render as-authored (black→pink)
             fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
             fill.BorderSizePixel = 0
-            fill.Size = UDim2.new(0.2, 0, 1, 0)
+            fill.Size = UDim2.new(0.5, 0, 1, 0)
+            fill.ZIndex = 2
             fill.Parent = track
 
             local fillCorner = Instance.new("UICorner")
             fillCorner.CornerRadius = UDim.new(0, 100)
             fillCorner.Parent = fill
 
+            local fillGradient = Instance.new("UIGradient")
+            fillGradient.Name = "UIGradient"
+            fillGradient.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0),
+                NumberSequenceKeypoint.new(1, 0)
+            })
+            fillGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, ACCENT_BLACK),
+                ColorSequenceKeypoint.new(1, ACCENT_PRIMARY)
+            })
+            fillGradient.Rotation = 0
+            fillGradient.Parent = fill
+
             local handle = Instance.new("Frame")
             handle.Name = "Handle"
             handle.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
             handle.BorderSizePixel = 0
             handle.AnchorPoint = Vector2.new(0.5, 0.5)
-            handle.Position = UDim2.new(0.2, 0, 0.5, 0)
+            handle.Position = UDim2.new(0.5, 0, 0.5, 0)
             handle.Size = UDim2.new(0, 12, 0, 12)
+            handle.ZIndex = 3
             handle.Parent = trackArea
 
             local handleCorner = Instance.new("UICorner")
@@ -22282,6 +22298,7 @@ local function createAsteriaGUI(title, opts)
             clickArea.Size = UDim2.new(1, 0, 1, 0)
             clickArea.Text = ""
             clickArea.AutoButtonColor = false
+            clickArea.ZIndex = 4
             clickArea.Parent = trackArea
 
             attachPurpose(sliderRow, purpose)
@@ -22411,7 +22428,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v2"
+Api.__build = "workspace-local-2025-12-28-v3"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
