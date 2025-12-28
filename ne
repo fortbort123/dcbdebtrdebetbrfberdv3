@@ -22324,6 +22324,7 @@ local function createAsteriaGUI(title, opts)
             row.Parent = elementsContainer
 
             -- Start collapsed for intro animation
+            row:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(UDim2.new(1, 0, 0, 32)))
             row.Size = UDim2.new(1, 0, 0, 0)
             local cg = getOrCreateSearchCanvasGroup(row)
             cg.GroupTransparency = 1
@@ -22882,7 +22883,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v12-scopefix"
+Api.__build = "workspace-local-2025-12-28-v13-keybindfix"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
