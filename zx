@@ -16,6 +16,27 @@ local CoreGui = game:GetService("CoreGui")
 
 local NilApi = {}
 
+-- Some executors ship a minimal Luau environment without Roblox's `task` library.
+-- Use a local fallback so calls like `task.defer`/`task.delay` don't crash.
+do
+    local _task = task
+    if type(_task) ~= "table" then
+        _task = {}
+    end
+    _task.wait = _task.wait or wait
+    _task.spawn = _task.spawn or spawn
+    _task.defer = _task.defer or function(fn)
+        return _task.spawn(fn)
+    end
+    _task.delay = _task.delay or function(seconds, fn)
+        return _task.spawn(function()
+            _task.wait(seconds)
+            fn()
+        end)
+    end
+    task = _task
+end
+
 local function randomName(len)
     local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     local n = len or 24
