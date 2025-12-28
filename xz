@@ -22090,6 +22090,7 @@ local function createAsteriaGUI(title, opts)
             button.Parent = elementsContainer
 
             -- Start collapsed for intro animation
+            button:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(button.Size))
             button.Size = UDim2.new(1, 0, 0, 0)
             local cg = getOrCreateSearchCanvasGroup(button)
             cg.GroupTransparency = 1
@@ -22518,7 +22519,7 @@ local function createAsteriaGUI(title, opts)
             sliderRow.Parent = elementsContainer
 
             -- Start collapsed for intro animation
-            sliderRow:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(UDim2.new(1, 0, 0, 32)))
+            sliderRow:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(sliderRow.Size))
             sliderRow.Size = UDim2.new(1, 0, 0, 0)
             local cg = getOrCreateSearchCanvasGroup(sliderRow)
             cg.GroupTransparency = 1
@@ -22883,7 +22884,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v13-keybindfix"
+Api.__build = "workspace-local-2025-12-28-v14-unsquish"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
