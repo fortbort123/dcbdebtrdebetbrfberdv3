@@ -20724,68 +20724,58 @@ local function createAsteriaGUI(title, opts)
 
     local function playInitialModuleDropAnimation()
         if initialDropPlayed then
-            print("[AsteriaIntro] Animation already played, skipping")
             return
         end
         initialDropPlayed = true
 
-        print("[AsteriaIntro] Starting intro animation...")
-
-        -- Debug: check what pages we have
-        local pageCount = 0
-        for k, v in pairs(pagesByTabText) do
-            pageCount += 1
-            print("[AsteriaIntro] Found page in pagesByTabText:", k)
-        end
-
         -- Start: headers only
         initialDropHolding = true
 
-        -- For builder/customTabs mode, also iterate pagesContainer descendants
-        -- in case pagesByTabText wasn't fully populated yet.
-        local pagesToAnimate = {}
-        for _, p in pairs(pagesByTabText) do
-            if p and p:IsA("Frame") then
-                pagesToAnimate[p] = true
-            end
-        end
-
-        -- Also grab all pages from pagesContainer directly (fallback for builder mode)
-        if pagesContainer then
-            for _, child in ipairs(pagesContainer:GetChildren()) do
-                if child:IsA("Frame") and child.Name:match("Page$") then
-                    pagesToAnimate[child] = true
-                    print("[AsteriaIntro] Found page in pagesContainer:", child.Name)
+        -- For default UI mode: use the complex page-based collapse/expand
+        if layoutMode == "default" then
+            for _, p in pairs(pagesByTabText) do
+                if p and p:IsA("Frame") then
+                    collapseAllRowsForPage(p)
                 end
             end
+
+            task.delay(INITIAL_DROP_DELAY, function()
+                initialDropHolding = false
+                for _, p in pairs(pagesByTabText) do
+                    if p and p:IsA("Frame") then
+                        expandAllRowsForPage(p)
+                    end
+                end
+                if applySearchFilter and searchBox and searchBox.Text and searchBox.Text ~= "" then
+                    applySearchFilter(searchBox.Text)
+                end
+            end)
         else
-            print("[AsteriaIntro] pagesContainer is nil!")
+            -- For builder/customTabs mode: expand registered builder sections
+            task.delay(INITIAL_DROP_DELAY, function()
+                initialDropHolding = false
+                for _, data in ipairs(builderSectionsToAnimate) do
+                    local section = data.section
+                    local elements = data.elements
+                    local fullHeight = data.fullHeight
+
+                    if section and section.Parent then
+                        -- Tween section to full height
+                        local targetSize = UDim2.new(1, 0, 0, fullHeight)
+                        tweenGuiSize(section, activeSearchSectionTweens, targetSize, INITIAL_DROP_TWEEN_TIME)
+
+                        -- Fade in all child rows
+                        if elements and elements:IsA("ScrollingFrame") then
+                            for _, child in ipairs(elements:GetChildren()) do
+                                if child:IsA("GuiObject") then
+                                    setRowVisibleAnimated(child, true, INITIAL_DROP_TWEEN_TIME, INITIAL_DROP_FADE_TIME)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
         end
-
-        local animCount = 0
-        for _ in pairs(pagesToAnimate) do
-            animCount += 1
-        end
-        print("[AsteriaIntro] Total pages to animate:", animCount)
-
-        for p, _ in pairs(pagesToAnimate) do
-            collapseAllRowsForPage(p)
-        end
-
-        print("[AsteriaIntro] Collapsed pages, waiting", INITIAL_DROP_DELAY, "seconds...")
-
-        -- After delay: drop in rows
-        task.delay(INITIAL_DROP_DELAY, function()
-            print("[AsteriaIntro] Expanding rows now...")
-            initialDropHolding = false
-            for p, _ in pairs(pagesToAnimate) do
-                expandAllRowsForPage(p)
-            end
-            -- If a search query is already present, immediately apply it after drop.
-            if applySearchFilter and searchBox and searchBox.Text and searchBox.Text ~= "" then
-                applySearchFilter(searchBox.Text)
-            end
-        end)
     end
 
     -- Page/tab switch animation (fade + slight slide)
@@ -21667,6 +21657,8 @@ local function createAsteriaGUI(title, opts)
         accentBlack = ACCENT_BLACK,
     })
 
+    local builderSectionsToAnimate = {}
+
     local builderApi = nil
     if layoutMode ~= "default" then
         local function resolveTabColumns(tabText)
@@ -21709,7 +21701,10 @@ local function createAsteriaGUI(title, opts)
             sectionFrame.BackgroundTransparency = 0
             sectionFrame.BackgroundColor3 = Color3.fromRGB(23, 25, 28)
             sectionFrame.BorderSizePixel = 0
-            sectionFrame.Size = UDim2.new(1, 0, 0, sectionHeight)
+            -- Start collapsed (header only) for intro animation
+            sectionFrame.Size = UDim2.new(1, 0, 0, 36)
+            -- Store full height for later expansion
+            sectionFrame:SetAttribute("AsteriaFullHeight", sectionHeight)
 
             local sectionCorner = Instance.new("UICorner")
             sectionCorner.Name = "UICorner"
@@ -21901,6 +21896,13 @@ local function createAsteriaGUI(title, opts)
             elementsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
             elementsLayout.Parent = elementsContainer
 
+            -- Register this section for intro animation
+            table.insert(builderSectionsToAnimate, {
+                section = sectionFrame,
+                elements = elementsContainer,
+                fullHeight = sectionHeight,
+            })
+
             return sectionFrame, elementsContainer
         end
 
@@ -22030,6 +22032,12 @@ local function createAsteriaGUI(title, opts)
             setZIndexRecursive(toggleRow, 4)
             toggleRow.Parent = elementsContainer
 
+            -- Start collapsed for intro animation
+            toggleRow:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(UDim2.new(1, 0, 0, 32)))
+            toggleRow.Size = UDim2.new(1, 0, 0, 0)
+            local cg = getOrCreateSearchCanvasGroup(toggleRow)
+            cg.GroupTransparency = 1
+
             if defaultValue ~= nil then
                 setCheckboxChecked(checkbox, defaultValue == true)
             end
@@ -22072,6 +22080,11 @@ local function createAsteriaGUI(title, opts)
             attachPurpose(button, purpose)
             setZIndexRecursive(button, 4)
             button.Parent = elementsContainer
+
+            -- Start collapsed for intro animation
+            button.Size = UDim2.new(1, 0, 0, 0)
+            local cg = getOrCreateSearchCanvasGroup(button)
+            cg.GroupTransparency = 1
 
             if type(callback) == "function" then
                 button.MouseButton1Click:Connect(function()
@@ -22134,6 +22147,12 @@ local function createAsteriaGUI(title, opts)
             attachPurpose(row, purpose)
             setZIndexRecursive(row, 4)
             row.Parent = elementsContainer
+
+            -- Start collapsed for intro animation
+            row:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(UDim2.new(1, 0, 0, 32)))
+            row.Size = UDim2.new(1, 0, 0, 0)
+            local cg = getOrCreateSearchCanvasGroup(row)
+            cg.GroupTransparency = 1
 
             if type(callback) == "function" then
                 textbox.FocusLost:Connect(function()
@@ -22207,6 +22226,12 @@ local function createAsteriaGUI(title, opts)
             attachPurpose(row, purpose)
             setZIndexRecursive(row, 4)
             row.Parent = elementsContainer
+
+            -- Start collapsed for intro animation
+            row:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(UDim2.new(1, 0, 0, 32)))
+            row.Size = UDim2.new(1, 0, 0, 0)
+            local cg = getOrCreateSearchCanvasGroup(row)
+            cg.GroupTransparency = 1
 
             if type(callback) == "function" then
                 dropdown.MouseButton1Click:Connect(function()
@@ -22289,6 +22314,11 @@ local function createAsteriaGUI(title, opts)
             attachPurpose(row, purpose)
             setZIndexRecursive(row, 4)
             row.Parent = elementsContainer
+
+            -- Start collapsed for intro animation
+            row.Size = UDim2.new(1, 0, 0, 0)
+            local cg = getOrCreateSearchCanvasGroup(row)
+            cg.GroupTransparency = 1
 
             return row
         end
@@ -22477,6 +22507,12 @@ local function createAsteriaGUI(title, opts)
             attachPurpose(sliderRow, purpose)
             setZIndexRecursive(sliderRow, 4)
             sliderRow.Parent = elementsContainer
+
+            -- Start collapsed for intro animation
+            sliderRow:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(UDim2.new(1, 0, 0, 32)))
+            sliderRow.Size = UDim2.new(1, 0, 0, 0)
+            local cg = getOrCreateSearchCanvasGroup(sliderRow)
+            cg.GroupTransparency = 1
 
             -- Slider logic (inline) - use the same smoothing loop as the original slider
             local currentValue = tonumber(defaultValue) or minV
@@ -22838,7 +22874,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v10-debug"
+Api.__build = "workspace-local-2025-12-28-v11"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
