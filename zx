@@ -22174,6 +22174,82 @@ local function createAsteriaGUI(title, opts)
             return row
         end
 
+        local function builderKeybind(elementsContainer, labelText, defaultKeyCode, purpose, callback, bindToMenuToggle)
+            local row = Instance.new("Frame")
+            row.Name = tostring(labelText or "Keybind"):gsub("%s+", "") .. "KeybindRow"
+            row.BackgroundTransparency = 1
+            row.BorderSizePixel = 0
+            row.Size = UDim2.new(1, 0, 0, 32)
+
+            local label = Instance.new("TextLabel")
+            label.Name = "Label"
+            label.BackgroundTransparency = 1
+            label.BorderSizePixel = 0
+            label.Size = UDim2.new(0.4, -5, 1, 0)
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 14
+            label.TextColor3 = Color3.fromRGB(230, 230, 230)
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.TextYAlignment = Enum.TextYAlignment.Center
+            label.Text = tostring(labelText or "Keybind")
+            label.Parent = row
+
+            local keybindButton = Instance.new("TextButton")
+            keybindButton.Name = "KeybindButton"
+            keybindButton.AnchorPoint = Vector2.new(0, 0.5)
+            keybindButton.Position = UDim2.new(0.4, 0, 0.5, 0)
+            keybindButton.Size = UDim2.new(0.6, 0, 0, 24)
+            keybindButton.BorderSizePixel = 0
+            keybindButton.BackgroundTransparency = 0
+            keybindButton.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            keybindButton.AutoButtonColor = false
+            keybindButton.Text = "None"
+            keybindButton.TextColor3 = Color3.fromRGB(230, 230, 230)
+            keybindButton.Font = Enum.Font.GothamBold
+            keybindButton.TextSize = 14
+            keybindButton.Parent = row
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, 8)
+            corner.Parent = keybindButton
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Name = "UIStroke"
+            stroke.Thickness = 2
+            stroke.Transparency = 0.35
+            stroke.Color = Color3.fromRGB(40, 43, 46)
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            stroke.LineJoinMode = Enum.LineJoinMode.Round
+            stroke.Parent = keybindButton
+
+            createSheenAndShadeOverlays(keybindButton, UDim.new(0, 8))
+            bindButtonStrokeHover(keybindButton, stroke)
+
+            -- If requested, mirror the original Toggle Menu behavior (updates the internal toggle hotkey).
+            if bindToMenuToggle == true then
+                keybindButton:SetAttribute("AsteriaKeybindsDisplayIgnore", true)
+                keybindChangedCallbackByButton[keybindButton] = function(keyCode)
+                    menuToggleKeyCode = keyCode
+                    if type(callback) == "function" then
+                        callback(keyCode)
+                    end
+                end
+            elseif type(callback) == "function" then
+                keybindChangedCallbackByButton[keybindButton] = callback
+            end
+
+            bindKeybindButton(keybindButton)
+            if typeof(defaultKeyCode) == "EnumItem" then
+                setKeybindForButton(keybindButton, defaultKeyCode)
+            end
+
+            attachPurpose(row, purpose)
+            setZIndexRecursive(row, 4)
+            row.Parent = elementsContainer
+
+            return row
+        end
+
         local function builderSlider(elementsContainer, labelText, defaultValue, minValue, maxValue, stepValue, purpose, callback)
             local sliderRow = Instance.new("Frame")
             sliderRow.Name = tostring(labelText or "Slider"):gsub("%s+", "") .. "SliderRow"
@@ -22611,6 +22687,17 @@ local function createAsteriaGUI(title, opts)
                     t = t or {}
                     return builderDropdown(elements, t.name or t.title or "Dropdown", t.default or "[Select]", t.purpose, t.callback)
                 end
+                function headerObj:Keybind(t)
+                    t = t or {}
+                    return builderKeybind(
+                        elements,
+                        t.name or t.title or "Keybind",
+                        t.default,
+                        t.purpose,
+                        t.callback,
+                        t.bindToMenuToggle == true
+                    )
+                end
 
                 headerObj.Section = section
                 headerObj.Elements = elements
@@ -22661,7 +22748,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v6"
+Api.__build = "workspace-local-2025-12-28-v7"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
