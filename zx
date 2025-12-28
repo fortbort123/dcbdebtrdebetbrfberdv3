@@ -3350,6 +3350,7 @@ local function createAsteriaGUI(title, opts)
 
     local keybindsDisplay = nil
     local showKeybindsCheckbox = nil
+    local multiKeybindCheckbox = nil
 
     local keybindSizeTweenByButton = setmetatable({}, { __mode = "k" })
     local keybindLabelSizeTweenByLabel = setmetatable({}, { __mode = "k" })
@@ -12345,6 +12346,7 @@ local function createAsteriaGUI(title, opts)
         end
 
         local _, multiCheckbox = createToggleRow("Multi KeybindToggleRow", "Multi Keybind", false)
+        multiKeybindCheckbox = multiCheckbox
         if multiCheckbox then
             setCheckboxChecked(multiCheckbox, false)
             multiKeybindEnabled = false
@@ -22717,6 +22719,45 @@ local function createAsteriaGUI(title, opts)
         contentFrame = contentFrame,
         sideBar = sideBar,
         builder = builderApi,
+
+        setKeybindsVisible = function(visible)
+            visible = (visible == true)
+            if showKeybindsCheckbox then
+                setCheckboxChecked(showKeybindsCheckbox, visible)
+                return
+            end
+            if keybindsDisplay then
+                keybindsDisplay:SetVisible(visible)
+            end
+        end,
+
+        getKeybindsVisible = function()
+            if showKeybindsCheckbox then
+                return showKeybindsCheckbox:GetAttribute("AsteriaChecked") == true
+            end
+            if keybindsDisplay and keybindsDisplay.Gui and keybindsDisplay.Gui:IsA("ScreenGui") then
+                return keybindsDisplay.Gui.Enabled == true
+            end
+            return false
+        end,
+
+        setMultiKeybindEnabled = function(enabled)
+            enabled = (enabled == true)
+            multiKeybindEnabled = enabled
+            if multiKeybindCheckbox then
+                setCheckboxChecked(multiKeybindCheckbox, enabled)
+            end
+            if not enabled then
+                pcall(enforceUniqueKeybinds)
+            end
+            if keybindsDisplay then
+                keybindsDisplay:ScheduleRefresh()
+            end
+        end,
+
+        getMultiKeybindEnabled = function()
+            return multiKeybindEnabled == true
+        end,
         
         -- Helper functions
         destroy = function()
