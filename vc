@@ -22140,49 +22140,36 @@ local function createAsteriaGUI(title, opts)
             textbox.Text = ""
             textbox.Parent = row
 
-            -- Clear button (matches the original UI behavior)
-            local clearButton = Instance.new("TextButton")
+            -- Match the original UI: textbox padding + ImageButton clear icon.
+            local textboxPadding = Instance.new("UIPadding")
+            textboxPadding.Name = "UIPadding"
+            textboxPadding.PaddingTop = UDim.new(0, 0)
+            textboxPadding.PaddingBottom = UDim.new(0, 0)
+            textboxPadding.PaddingLeft = UDim.new(0, 10)
+            textboxPadding.PaddingRight = UDim.new(0, 26)
+            textboxPadding.Parent = textbox
+
+            local clearButton = Instance.new("ImageButton")
             clearButton.Name = "ClearButton"
-            clearButton.AutoButtonColor = false
-            clearButton.BackgroundTransparency = 1
-            clearButton.BorderSizePixel = 0
+            clearButton.LayoutOrder = 0
+            clearButton.ImageTransparency = 1
             clearButton.AnchorPoint = Vector2.new(1, 0.5)
-            clearButton.Position = UDim2.new(1, -8, 0.5, 0)
-            clearButton.Size = UDim2.new(0, 18, 0, 18)
-            clearButton.Font = Enum.Font.GothamBold
-            clearButton.TextSize = 16
-            clearButton.TextColor3 = Color3.fromRGB(160, 160, 165)
-            clearButton.Text = "×"
-            clearButton.Visible = false
-            clearButton.ZIndex = textbox.ZIndex + 2
+            clearButton.Image = "rbxassetid://9127564477"
+            clearButton.TileSize = UDim2.new(1, 0, 1, 0)
+            clearButton.ZIndex = 2
+            clearButton.BorderSizePixel = 1
+            clearButton.Size = UDim2.new(0, 14, 0, 14)
+            clearButton.ScaleType = Enum.ScaleType.Stretch
+            clearButton.Modal = false
+            clearButton.BackgroundTransparency = 1
+            clearButton.AutoButtonColor = true
+            clearButton.Rotation = 0
+            clearButton.Position = UDim2.new(1, -7, 0.5, 0)
+            clearButton.SliceScale = 1
+            clearButton.Visible = true
+            clearButton.ImageColor3 = Color3.fromRGB(160, 160, 165)
+            clearButton.BackgroundColor3 = Color3.fromRGB(163, 162, 165)
             clearButton.Parent = textbox
-
-            -- Add internal padding so the clear button doesn't overlap text
-            local textPad = Instance.new("UIPadding")
-            textPad.Name = "TextPadding"
-            textPad.PaddingLeft = UDim.new(0, 8)
-            textPad.PaddingRight = UDim.new(0, 22)
-            textPad.Parent = textbox
-
-            local function updateClearVisible()
-                clearButton.Visible = (textbox.Text ~= nil and textbox.Text ~= "")
-            end
-            updateClearVisible()
-            textbox:GetPropertyChangedSignal("Text"):Connect(updateClearVisible)
-
-            clearButton.MouseButton1Click:Connect(function()
-                textbox.Text = ""
-                updateClearVisible()
-                if type(callback) == "function" then
-                    callback("")
-                end
-            end)
-            clearButton.MouseEnter:Connect(function()
-                clearButton.TextColor3 = Color3.fromRGB(230, 230, 230)
-            end)
-            clearButton.MouseLeave:Connect(function()
-                clearButton.TextColor3 = Color3.fromRGB(160, 160, 165)
-            end)
 
             local corner = Instance.new("UICorner")
             corner.CornerRadius = UDim.new(0, 8)
@@ -22928,7 +22915,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v15-textbox-clear"
+Api.__build = "workspace-local-2025-12-28-v16-textbox-clear-original"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
