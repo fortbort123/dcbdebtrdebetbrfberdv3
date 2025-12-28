@@ -23146,7 +23146,16 @@ local function createAsteriaGUI(title, opts)
         local key = "AsteriaSearchOriginalSize"
         local stored = guiObject:GetAttribute(key)
         if stored == nil then
-            local encoded = encodeUDim2(guiObject.Size)
+            local sz = guiObject.Size
+            -- Some rows/sections may report Size Y=0 while the layout is still computing.
+            -- On reload/module-drop this can cause us to store a zero height and never restore.
+            if (sz.Y.Scale == 0 and sz.Y.Offset == 0) then
+                local absY = (guiObject.AbsoluteSize and guiObject.AbsoluteSize.Y) or 0
+                if absY and absY > 0 then
+                    sz = UDim2.new(sz.X.Scale, sz.X.Offset, 0, absY)
+                end
+            end
+            local encoded = encodeUDim2(sz)
             guiObject:SetAttribute(key, encoded)
             stored = encoded
         end
@@ -23453,7 +23462,14 @@ local function createAsteriaGUI(title, opts)
                         sectionFrame:SetAttribute("AsteriaSearchOriginalVisible", sectionFrame.Visible)
                     end
                     if sectionFrame:GetAttribute("AsteriaSearchOriginalSize") == nil then
-                        sectionFrame:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(sectionFrame.Size))
+                        local ss = sectionFrame.Size
+                        if (ss.Y.Scale == 0 and ss.Y.Offset == 0) then
+                            local absY = (sectionFrame.AbsoluteSize and sectionFrame.AbsoluteSize.Y) or 0
+                            if absY and absY > 0 then
+                                ss = UDim2.new(ss.X.Scale, ss.X.Offset, 0, absY)
+                            end
+                        end
+                        sectionFrame:SetAttribute("AsteriaSearchOriginalSize", encodeUDim2(ss))
                     end
 
                     -- Keep header visible, collapse overall section to header height.
