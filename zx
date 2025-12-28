@@ -4860,10 +4860,11 @@ local function createAsteriaGUI(title, opts)
 
     local dropShadowDefaultTransparency = dropShadow.ImageTransparency
 
-    -- Optional: mainframe intro animation (drop + fade in). This is separate from the
-    -- module "row drop" animation and should run even in API-only mode.
-    local useLegacyInitialDrop = (opts.legacyInitialDrop ~= false)
-    local playIntro = (opts.playIntro ~= false)
+    -- Optional: mainframe intro animation (drop + fade in).
+    -- Default OFF to match NILHUBFULLUI behavior (no bounce/drop of the whole window).
+    -- Loading should be the module-drop (headers-only -> modules drop) instead.
+    local useLegacyInitialDrop = (opts.legacyInitialDrop == true)
+    local playIntro = (opts.playIntro == true)
     local introPlayed = false
     local function playIntroAnimation()
         if introPlayed or not playIntro then
@@ -23103,7 +23104,7 @@ local function createAsteriaGUI(title, opts)
 
     -- Initial drop (header-only -> modules extend down)
     -- In API mode, users often want a longer "headers-only" hold before rows drop.
-    local usingModuleDrop = (opts and opts.legacyInitialDrop == false)
+    local usingModuleDrop = not (opts and opts.legacyInitialDrop == true)
 
     local INITIAL_DROP_DELAY
     if opts and opts.initialDropDelay ~= nil then
@@ -23437,7 +23438,7 @@ local function createAsteriaGUI(title, opts)
     -- Initial load: show only headers, then drop modules in after 1s
     local initialDropPlayed = false
     local initialDropHolding = false
-    local pendingInitialModuleDrop = (opts and opts.legacyInitialDrop == false) or false
+    local pendingInitialModuleDrop = not (opts and opts.legacyInitialDrop == true)
 
     local function getSectionFrameFromElementsContainer(elementsContainer)
         if elementsContainer
@@ -23551,6 +23552,16 @@ local function createAsteriaGUI(title, opts)
             return
         end
         initialDropPlayed = true
+
+        -- After reload/replay, freshly created rows may not have measured sizes yet.
+        -- Waiting 1-2 frames prevents us from caching a 0-height "original" size.
+        if RunService and RunService.Heartbeat then
+            RunService.Heartbeat:Wait()
+            RunService.Heartbeat:Wait()
+        elseif task and task.wait then
+            task.wait()
+            task.wait()
+        end
 
         -- Start: headers only
         initialDropHolding = true
@@ -24220,7 +24231,12 @@ local function createAsteriaGUI(title, opts)
 
         -- Default tab matches sidebar defaults (Farm)
         if pagesByTabText.Farm then
-            setActiveTab("Farm")
+            -- If we're restoring a tab on reload, don't select a different tab first
+            -- (avoids the page-switch fade/slide that NILHUBFULLUI doesn't do on reload).
+            if not (opts and opts._nilapiRestoreActiveTab ~= nil and tostring(opts._nilapiRestoreActiveTab or "") ~= "") then
+                ensureInitialModuleDropIfPending()
+                setActiveTab("Farm")
+            end
         end
     end
 
