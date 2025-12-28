@@ -21908,41 +21908,47 @@ local function createAsteriaGUI(title, opts)
             elementsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
             elementsLayout.Parent = elementsContainer
 
-            -- Auto-size the section to its content, but keep it sane:
-            -- - Accurate: use the ScrollingFrame's computed canvas height (includes padding/layout)
-            -- - Stable: clamp to [minHeight, maxHeight] so it won't become a tiny box
-            local MIN_SECTION_HEIGHT_PX = 132 -- header(36) + padding + ~2 rows (keeps it from looking "ass")
+            -- Auto-size per section based on its own content and its own configured max height.
+            -- The user's Header({ height = ... }) is treated as a MAX height.
             local EXTRA_BUFFER_PX = 6
+            local HEADER_HEIGHT_PX = 36
 
-            local function computeDesiredFullHeight()
+            local function getBodyContentHeightPx()
+                -- Prefer UIListLayout.AbsoluteContentSize (tracks row size tweens correctly).
+                local y = 0
+                if elementsLayout then
+                    y = tonumber(elementsLayout.AbsoluteContentSize.Y) or 0
+                end
+
+                -- Fallback: sometimes AbsoluteContentSize can lag a frame; canvas size reflects scrollable content.
+                if y <= 0 then
+                    local okCanvas, absCanvas = pcall(function()
+                        return elementsContainer.AbsoluteCanvasSize
+                    end)
+                    if okCanvas and typeof(absCanvas) == "Vector2" then
+                        y = tonumber(absCanvas.Y) or 0
+                    end
+                end
+
+                -- AbsoluteContentSize does NOT include our UIPadding; add it.
                 local padTop = 10
                 local padBottom = 12
                 if elementsPadding then
                     padTop = tonumber(elementsPadding.PaddingTop.Offset) or padTop
                     padBottom = tonumber(elementsPadding.PaddingBottom.Offset) or padBottom
                 end
+                return y + padTop + padBottom
+            end
 
-                local contentY = 0
-                -- Prefer the actual canvas height (more accurate than layout size during tweens).
-                local okCanvas, absCanvas = pcall(function()
-                    return elementsContainer.AbsoluteCanvasSize
-                end)
-                if okCanvas and typeof(absCanvas) == "Vector2" then
-                    contentY = tonumber(absCanvas.Y) or 0
-                elseif elementsLayout then
-                    contentY = tonumber(elementsLayout.AbsoluteContentSize.Y) or 0
+            local function computeDesiredFullHeight()
+                local maxBody = math.max(0, sectionMaxHeight - HEADER_HEIGHT_PX)
+                local body = getBodyContentHeightPx() + EXTRA_BUFFER_PX
+                local clampedBody = math.min(body, maxBody)
+                local desired = HEADER_HEIGHT_PX + clampedBody
+                -- Never shrink below header-only; do NOT force a global minimum (that made every section feel the same).
+                if desired < HEADER_HEIGHT_PX then
+                    desired = HEADER_HEIGHT_PX
                 end
-
-                -- If we used AbsoluteCanvasSize, it already includes padding; if not, add padding.
-                local desired
-                if okCanvas and typeof(absCanvas) == "Vector2" then
-                    desired = 36 + contentY + EXTRA_BUFFER_PX
-                else
-                    desired = 36 + padTop + padBottom + contentY + EXTRA_BUFFER_PX
-                end
-
-                local minH = math.min(sectionMaxHeight, MIN_SECTION_HEIGHT_PX)
-                desired = math.clamp(desired, minH, sectionMaxHeight)
                 return desired
             end
 
@@ -21967,6 +21973,15 @@ local function createAsteriaGUI(title, opts)
 
             -- Update sizing whenever row content changes.
             elementsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                task.defer(refreshSectionHeight)
+            end)
+            elementsContainer:GetPropertyChangedSignal("AbsoluteCanvasSize"):Connect(function()
+                task.defer(refreshSectionHeight)
+            end)
+            elementsContainer.ChildAdded:Connect(function()
+                task.defer(refreshSectionHeight)
+            end)
+            elementsContainer.ChildRemoved:Connect(function()
                 task.defer(refreshSectionHeight)
             end)
             task.defer(refreshSectionHeight)
@@ -22984,7 +22999,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v18-autosize-fix"
+Api.__build = "workspace-local-2025-12-28-v19-autosize-per-section"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
