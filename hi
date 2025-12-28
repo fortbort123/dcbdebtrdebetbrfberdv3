@@ -4568,6 +4568,101 @@ local function createAsteriaGUI(title, opts)
         setCheckboxChecked(checkboxButton, checkImage.ImageTransparency < 0.5)
     end
 
+    -- Helper: Sheen and shade overlays for buttons/checkboxes (builder needs this at top level)
+    local function createSheenAndShadeOverlays(parent, cornerRadius)
+        local sheenOverlay = Instance.new("Frame")
+        sheenOverlay.Name = "SheenOverlay"
+        sheenOverlay.Visible = true
+        sheenOverlay.ClipsDescendants = false
+        sheenOverlay.BorderColor3 = Color3.fromRGB(27, 42, 53)
+        sheenOverlay.LayoutOrder = 0
+        sheenOverlay.BackgroundTransparency = 1
+        sheenOverlay.Rotation = 0
+        sheenOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        sheenOverlay.Position = UDim2.new(0, 0, 0, 0)
+        sheenOverlay.AnchorPoint = Vector2.new(0, 0)
+        sheenOverlay.ZIndex = 2
+        sheenOverlay.BorderSizePixel = 0
+        sheenOverlay.Size = UDim2.new(1, 0, 1, 0)
+
+        local sheenCorner = Instance.new("UICorner")
+        sheenCorner.Name = "UICorner"
+        sheenCorner.CornerRadius = cornerRadius
+        sheenCorner.Parent = sheenOverlay
+
+        local sheenGradient = Instance.new("UIGradient")
+        sheenGradient.Name = "UIGradient"
+        sheenGradient.Offset = Vector2.new(0, 0)
+        sheenGradient.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.9),
+            NumberSequenceKeypoint.new(0.3, 0.96),
+            NumberSequenceKeypoint.new(0.5, 1),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        sheenGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+        })
+        sheenGradient.Rotation = 90
+        sheenGradient.Parent = sheenOverlay
+        sheenOverlay.Parent = parent
+
+        local shadeOverlay = Instance.new("Frame")
+        shadeOverlay.Name = "ShadeOverlay"
+        shadeOverlay.Visible = true
+        shadeOverlay.ClipsDescendants = false
+        shadeOverlay.BorderColor3 = Color3.fromRGB(27, 42, 53)
+        shadeOverlay.LayoutOrder = 0
+        shadeOverlay.BackgroundTransparency = 1
+        shadeOverlay.Rotation = 0
+        shadeOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        shadeOverlay.Position = UDim2.new(0, 0, 0, 0)
+        shadeOverlay.AnchorPoint = Vector2.new(0, 0)
+        shadeOverlay.ZIndex = 2
+        shadeOverlay.BorderSizePixel = 0
+        shadeOverlay.Size = UDim2.new(1, 0, 1, 0)
+
+        local shadeCorner = Instance.new("UICorner")
+        shadeCorner.Name = "UICorner"
+        shadeCorner.CornerRadius = cornerRadius
+        shadeCorner.Parent = shadeOverlay
+
+        local shadeGradient = Instance.new("UIGradient")
+        shadeGradient.Name = "UIGradient"
+        shadeGradient.Offset = Vector2.new(0, 0)
+        shadeGradient.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.6, 1),
+            NumberSequenceKeypoint.new(0.85, 0.96),
+            NumberSequenceKeypoint.new(1, 0.92),
+        })
+        shadeGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
+        })
+        shadeGradient.Rotation = 90
+        shadeGradient.Parent = shadeOverlay
+        shadeOverlay.Parent = parent
+    end
+
+    -- Helper: Apply sheen gradient to buttons/textboxes (builder needs this at top level)
+    local function applySheenGradient(target)
+        local sheen = Instance.new("UIGradient")
+        sheen.Name = "UIGradient"
+        sheen.Offset = Vector2.new(0, 0)
+        sheen.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.12),
+            NumberSequenceKeypoint.new(0.5, 0.18),
+            NumberSequenceKeypoint.new(1, 0.12),
+        })
+        sheen.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+        })
+        sheen.Rotation = 90
+        sheen.Parent = target
+    end
+
     -- Create Right Content Panel with sections
     local function createRightContentPanel()
         local rightContentFrame = Instance.new("ScrollingFrame")
@@ -22316,7 +22411,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28"
+Api.__build = "workspace-local-2025-12-28-v2"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
