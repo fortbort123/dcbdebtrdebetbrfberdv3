@@ -20728,6 +20728,9 @@ local function createAsteriaGUI(title, opts)
         end
         initialDropPlayed = true
 
+        print("[AsteriaIntro] Starting animation, layoutMode:", layoutMode)
+        print("[AsteriaIntro] Builder sections to animate:", #builderSectionsToAnimate)
+
         -- Start: headers only
         initialDropHolding = true
 
@@ -20752,12 +20755,16 @@ local function createAsteriaGUI(title, opts)
             end)
         else
             -- For builder/customTabs mode: expand registered builder sections
+            print("[AsteriaIntro] Using builder mode animation, waiting", INITIAL_DROP_DELAY, "seconds...")
             task.delay(INITIAL_DROP_DELAY, function()
+                print("[AsteriaIntro] Expanding", #builderSectionsToAnimate, "sections now...")
                 initialDropHolding = false
-                for _, data in ipairs(builderSectionsToAnimate) do
+                for i, data in ipairs(builderSectionsToAnimate) do
                     local section = data.section
                     local elements = data.elements
                     local fullHeight = data.fullHeight
+
+                    print("[AsteriaIntro] Expanding section", i, section and section.Name or "nil")
 
                     if section and section.Parent then
                         -- Tween section to full height
@@ -20774,6 +20781,7 @@ local function createAsteriaGUI(title, opts)
                         end
                     end
                 end
+                print("[AsteriaIntro] Animation expand complete!")
             end)
         end
     end
@@ -21897,6 +21905,7 @@ local function createAsteriaGUI(title, opts)
             elementsLayout.Parent = elementsContainer
 
             -- Register this section for intro animation
+            print("[AsteriaIntro] Registering section:", sectionTitleText, "height:", sectionHeight)
             table.insert(builderSectionsToAnimate, {
                 section = sectionFrame,
                 elements = elementsContainer,
@@ -22874,7 +22883,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v11"
+Api.__build = "workspace-local-2025-12-28-v11-debug2"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
