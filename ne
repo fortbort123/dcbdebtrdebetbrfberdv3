@@ -20630,8 +20630,10 @@ local function createAsteriaGUI(title, opts)
     end
 
     local function collapseAllRowsForPage(page)
+        local foundContainers = 0
         for _, elementsContainer in ipairs(page:GetDescendants()) do
             if elementsContainer:IsA("ScrollingFrame") and elementsContainer.Name == "ElementsContainer" then
+                foundContainers += 1
                 local sectionFrame = getSectionFrameFromElementsContainer(elementsContainer)
 
                 if sectionFrame then
@@ -20722,14 +20724,18 @@ local function createAsteriaGUI(title, opts)
 
     local function playInitialModuleDropAnimation()
         if initialDropPlayed then
+            print("[AsteriaIntro] Animation already played, skipping")
             return
         end
         initialDropPlayed = true
+
+        print("[AsteriaIntro] Starting intro animation...")
 
         -- Debug: check what pages we have
         local pageCount = 0
         for k, v in pairs(pagesByTabText) do
             pageCount += 1
+            print("[AsteriaIntro] Found page in pagesByTabText:", k)
         end
 
         -- Start: headers only
@@ -20749,16 +20755,28 @@ local function createAsteriaGUI(title, opts)
             for _, child in ipairs(pagesContainer:GetChildren()) do
                 if child:IsA("Frame") and child.Name:match("Page$") then
                     pagesToAnimate[child] = true
+                    print("[AsteriaIntro] Found page in pagesContainer:", child.Name)
                 end
             end
+        else
+            print("[AsteriaIntro] pagesContainer is nil!")
         end
+
+        local animCount = 0
+        for _ in pairs(pagesToAnimate) do
+            animCount += 1
+        end
+        print("[AsteriaIntro] Total pages to animate:", animCount)
 
         for p, _ in pairs(pagesToAnimate) do
             collapseAllRowsForPage(p)
         end
 
+        print("[AsteriaIntro] Collapsed pages, waiting", INITIAL_DROP_DELAY, "seconds...")
+
         -- After delay: drop in rows
         task.delay(INITIAL_DROP_DELAY, function()
+            print("[AsteriaIntro] Expanding rows now...")
             initialDropHolding = false
             for p, _ in pairs(pagesToAnimate) do
                 expandAllRowsForPage(p)
@@ -22820,7 +22838,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v9"
+Api.__build = "workspace-local-2025-12-28-v10-debug"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
