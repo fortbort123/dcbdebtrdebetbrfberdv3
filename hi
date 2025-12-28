@@ -22308,6 +22308,9 @@ end
 -- Library export (ModuleScript-style): this file never auto-runs.
 local Api = {}
 
+-- Build identifier (helps examples verify they loaded the correct file)
+Api.__build = "workspace-local-2025-12-28"
+
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
     return createAsteriaGUI(title or "Asteria Hub", opts)
