@@ -20726,21 +20726,42 @@ local function createAsteriaGUI(title, opts)
         end
         initialDropPlayed = true
 
+        -- Debug: check what pages we have
+        local pageCount = 0
+        for k, v in pairs(pagesByTabText) do
+            pageCount += 1
+        end
+
         -- Start: headers only
         initialDropHolding = true
+
+        -- For builder/customTabs mode, also iterate pagesContainer descendants
+        -- in case pagesByTabText wasn't fully populated yet.
+        local pagesToAnimate = {}
         for _, p in pairs(pagesByTabText) do
             if p and p:IsA("Frame") then
-                collapseAllRowsForPage(p)
+                pagesToAnimate[p] = true
             end
+        end
+
+        -- Also grab all pages from pagesContainer directly (fallback for builder mode)
+        if pagesContainer then
+            for _, child in ipairs(pagesContainer:GetChildren()) do
+                if child:IsA("Frame") and child.Name:match("Page$") then
+                    pagesToAnimate[child] = true
+                end
+            end
+        end
+
+        for p, _ in pairs(pagesToAnimate) do
+            collapseAllRowsForPage(p)
         end
 
         -- After delay: drop in rows
         task.delay(INITIAL_DROP_DELAY, function()
             initialDropHolding = false
-            for _, p in pairs(pagesByTabText) do
-                if p and p:IsA("Frame") then
-                    expandAllRowsForPage(p)
-                end
+            for p, _ in pairs(pagesToAnimate) do
+                expandAllRowsForPage(p)
             end
             -- If a search query is already present, immediately apply it after drop.
             if applySearchFilter and searchBox and searchBox.Text and searchBox.Text ~= "" then
@@ -22764,6 +22785,8 @@ local function createAsteriaGUI(title, opts)
         -- Manually trigger the startup intro animation (header first, then modules drop in).
         -- Call this AFTER you've finished adding all builder elements.
         playIntroAnimation = function()
+            -- Reset the flag so the animation can play even if called multiple times
+            initialDropPlayed = false
             playInitialModuleDropAnimation()
         end,
         
@@ -22797,7 +22820,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v8"
+Api.__build = "workspace-local-2025-12-28-v9"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
