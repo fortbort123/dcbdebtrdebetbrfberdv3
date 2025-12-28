@@ -21579,6 +21579,7 @@ local function createAsteriaGUI(title, opts)
             darkSweep.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
             darkSweep.BorderSizePixel = 0
             darkSweep.Size = UDim2.new(1, 0, 1, 0)
+            darkSweep.ZIndex = 0
             darkSweep.Parent = sectionFrame
 
             local darkCorner = Instance.new("UICorner")
@@ -21604,7 +21605,8 @@ local function createAsteriaGUI(title, opts)
             gradientOverlay.BackgroundColor3 = Color3.fromRGB(23, 25, 28)
             gradientOverlay.BorderSizePixel = 0
             gradientOverlay.Size = UDim2.new(1, 0, 1, 0)
-            gradientOverlay.ZIndex = 2
+            -- Keep the overlay behind the interactive content.
+            gradientOverlay.ZIndex = 0
             gradientOverlay.Parent = sectionFrame
 
             local overlayCorner = Instance.new("UICorner")
