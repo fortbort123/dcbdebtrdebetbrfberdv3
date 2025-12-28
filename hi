@@ -21527,7 +21527,12 @@ local function createAsteriaGUI(title, opts)
                 return { left = builderLeftColumn, right = builderRightColumn }
             end
             tabText = tostring(tabText or firstCustomTabText or "")
-            return columnsByTabText[tabText]
+            local cols = columnsByTabText[tabText]
+            print("[AsteriaDebug] resolveTabColumns(", tabText, ") ->", cols and "found" or "nil", "| available tabs:")
+            for k, _ in pairs(columnsByTabText) do
+                print("  -", k)
+            end
+            return cols
         end
 
         local function pickColumn(side)
@@ -22231,8 +22236,10 @@ local function createAsteriaGUI(title, opts)
                 end
 
                 if not parentColumn then
+                    warn("[AsteriaDebug] Header: parentColumn is nil for tab=", args.tab, "side=", side)
                     return nil
                 end
+                print("[AsteriaDebug] Header: parentColumn found, creating section for", args.name or args.title or "Header")
 
                 local section, elements = createBuilderSection(args.name or args.title or "Header", args.icon or "", args.height)
                 attachPurpose(section, args.purpose)
