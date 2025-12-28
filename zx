@@ -21420,6 +21420,8 @@ local function createAsteriaGUI(title, opts)
         if firstCustomTabText and pagesByTabText[firstCustomTabText] then
             setActiveTab(firstCustomTabText)
         end
+        -- Do NOT auto-play here; the user's script will add builder elements after this.
+        -- The animation will be triggered via playIntroAnimation() or deferred.
     else
         -- Default tab matches sidebar defaults (Farm)
         setActiveTab("Farm")
@@ -22758,6 +22760,12 @@ local function createAsteriaGUI(title, opts)
         getMultiKeybindEnabled = function()
             return multiKeybindEnabled == true
         end,
+
+        -- Manually trigger the startup intro animation (header first, then modules drop in).
+        -- Call this AFTER you've finished adding all builder elements.
+        playIntroAnimation = function()
+            playInitialModuleDropAnimation()
+        end,
         
         -- Helper functions
         destroy = function()
@@ -22789,7 +22797,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v7"
+Api.__build = "workspace-local-2025-12-28-v8"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
