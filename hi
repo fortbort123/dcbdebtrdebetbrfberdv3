@@ -21553,6 +21553,7 @@ local function createAsteriaGUI(title, opts)
             sectionFrame.Visible = true
             sectionFrame.ClipsDescendants = true
             sectionFrame.LayoutOrder = 0
+            sectionFrame.ZIndex = 1
             sectionFrame.BackgroundTransparency = 0
             sectionFrame.BackgroundColor3 = Color3.fromRGB(23, 25, 28)
             sectionFrame.BorderSizePixel = 0
@@ -21579,7 +21580,7 @@ local function createAsteriaGUI(title, opts)
             darkSweep.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
             darkSweep.BorderSizePixel = 0
             darkSweep.Size = UDim2.new(1, 0, 1, 0)
-            darkSweep.ZIndex = 0
+            darkSweep.ZIndex = 1
             darkSweep.Parent = sectionFrame
 
             local darkCorner = Instance.new("UICorner")
@@ -21606,7 +21607,7 @@ local function createAsteriaGUI(title, opts)
             gradientOverlay.BorderSizePixel = 0
             gradientOverlay.Size = UDim2.new(1, 0, 1, 0)
             -- Keep the overlay behind the interactive content.
-            gradientOverlay.ZIndex = 0
+            gradientOverlay.ZIndex = 1
             gradientOverlay.Parent = sectionFrame
 
             local overlayCorner = Instance.new("UICorner")
@@ -21722,6 +21723,7 @@ local function createAsteriaGUI(title, opts)
             elementsContainer.BackgroundTransparency = 1
             elementsContainer.BorderSizePixel = 0
             elementsContainer.Size = UDim2.new(1, 0, 1, 0)
+            elementsContainer.ZIndex = 3
             elementsContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
             elementsContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
             elementsContainer.ScrollBarThickness = 0
@@ -21753,6 +21755,23 @@ local function createAsteriaGUI(title, opts)
         local function attachPurpose(row, purpose)
             if purpose ~= nil and row and row.SetAttribute then
                 row:SetAttribute("AsteriaPurpose", tostring(purpose))
+            end
+        end
+
+        local function setZIndexRecursive(root, z)
+            if not root then
+                return
+            end
+            z = tonumber(z) or 1
+            if typeof(root) == "Instance" and root:IsA("GuiObject") then
+                root.ZIndex = z
+            end
+            if typeof(root) == "Instance" then
+                for _, d in ipairs(root:GetDescendants()) do
+                    if d:IsA("GuiObject") then
+                        d.ZIndex = z
+                    end
+                end
             end
         end
 
@@ -21854,6 +21873,7 @@ local function createAsteriaGUI(title, opts)
             end
 
             attachPurpose(toggleRow, purpose)
+            setZIndexRecursive(toggleRow, 4)
             toggleRow.Parent = elementsContainer
 
             if defaultValue ~= nil then
@@ -21896,6 +21916,7 @@ local function createAsteriaGUI(title, opts)
             applySheenGradient(button)
             bindButtonStrokeHover(button, stroke)
             attachPurpose(button, purpose)
+            setZIndexRecursive(button, 4)
             button.Parent = elementsContainer
 
             if type(callback) == "function" then
@@ -21957,6 +21978,7 @@ local function createAsteriaGUI(title, opts)
 
             applySheenGradient(textbox)
             attachPurpose(row, purpose)
+            setZIndexRecursive(row, 4)
             row.Parent = elementsContainer
 
             if type(callback) == "function" then
@@ -22029,6 +22051,7 @@ local function createAsteriaGUI(title, opts)
             arrow.Parent = dropdown
 
             attachPurpose(row, purpose)
+            setZIndexRecursive(row, 4)
             row.Parent = elementsContainer
 
             if type(callback) == "function" then
@@ -22162,6 +22185,7 @@ local function createAsteriaGUI(title, opts)
             clickArea.Parent = trackArea
 
             attachPurpose(sliderRow, purpose)
+            setZIndexRecursive(sliderRow, 4)
             sliderRow.Parent = elementsContainer
 
             if type(callback) == "function" then
