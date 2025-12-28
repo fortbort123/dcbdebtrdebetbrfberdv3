@@ -20763,7 +20763,11 @@ local function createAsteriaGUI(title, opts)
                 for i, data in ipairs(builderSectionsToAnimate) do
                     local section = data.section
                     local elements = data.elements
-                    local fullHeight = data.fullHeight
+                    local fullHeight = nil
+                    if section and section.GetAttribute then
+                        fullHeight = tonumber(section:GetAttribute("AsteriaFullHeight"))
+                    end
+                    fullHeight = fullHeight or tonumber(data.fullHeight) or tonumber(data.maxHeight) or 220
 
                     print("[AsteriaIntro] Expanding section", i, section and section.Name or "nil")
 
@@ -21697,7 +21701,8 @@ local function createAsteriaGUI(title, opts)
         local function createBuilderSection(sectionTitleText, sectionIconId, sectionHeight)
             sectionTitleText = tostring(sectionTitleText or "Section")
             sectionIconId = tostring(sectionIconId or "")
-            sectionHeight = tonumber(sectionHeight) or 220
+            -- sectionHeight is treated as a MAX height; the section can shrink to fit contents.
+            local sectionMaxHeight = tonumber(sectionHeight) or 220
 
             local sectionFrame = Instance.new("Frame")
             sectionFrame.Name = sectionTitleText .. "SectionFrame"
@@ -21710,8 +21715,8 @@ local function createAsteriaGUI(title, opts)
             sectionFrame.BorderSizePixel = 0
             -- Start collapsed (header only) for intro animation
             sectionFrame.Size = UDim2.new(1, 0, 0, 36)
-            -- Store full height for later expansion
-            sectionFrame:SetAttribute("AsteriaFullHeight", sectionHeight)
+            -- Store computed full height for later expansion (updated as rows are added)
+            sectionFrame:SetAttribute("AsteriaFullHeight", sectionMaxHeight)
 
             local sectionCorner = Instance.new("UICorner")
             sectionCorner.Name = "UICorner"
@@ -21903,12 +21908,67 @@ local function createAsteriaGUI(title, opts)
             elementsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
             elementsLayout.Parent = elementsContainer
 
+            -- Auto-size the section to the current number of rows (shrink to fit),
+            -- while keeping a maximum height so long sections still scroll.
+            local function computeDesiredFullHeight()
+                local padTop = 10
+                local padBottom = 12
+                if elementsPadding then
+                    padTop = tonumber(elementsPadding.PaddingTop.Offset) or padTop
+                    padBottom = tonumber(elementsPadding.PaddingBottom.Offset) or padBottom
+                end
+
+                local contentY = 0
+                if elementsLayout then
+                    contentY = tonumber(elementsLayout.AbsoluteContentSize.Y) or 0
+                end
+
+                -- Header (36) + padding + content.
+                local desired = 36 + padTop + padBottom + contentY
+
+                -- Keep within the max height.
+                if desired > sectionMaxHeight then
+                    return sectionMaxHeight
+                end
+                -- Never smaller than header.
+                if desired < 36 then
+                    return 36
+                end
+                return desired
+            end
+
+            local function refreshSectionHeight()
+                if not (sectionFrame and sectionFrame.Parent) then
+                    return
+                end
+
+                local targetHeight = computeDesiredFullHeight()
+                sectionFrame:SetAttribute("AsteriaFullHeight", targetHeight)
+
+                -- While intro is holding everything collapsed, don't fight the animation.
+                if initialDropHolding then
+                    return
+                end
+
+                -- If this section is currently expanded, keep it snug to content.
+                if sectionFrame.Size.Y.Offset ~= 36 then
+                    sectionFrame.Size = UDim2.new(1, 0, 0, targetHeight)
+                end
+            end
+
+            -- Update sizing whenever row content changes.
+            elementsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                task.defer(refreshSectionHeight)
+            end)
+            task.defer(refreshSectionHeight)
+
             -- Register this section for intro animation
-            print("[AsteriaIntro] Registering section:", sectionTitleText, "height:", sectionHeight)
+            print("[AsteriaIntro] Registering section:", sectionTitleText, "max height:", sectionMaxHeight)
             table.insert(builderSectionsToAnimate, {
                 section = sectionFrame,
                 elements = elementsContainer,
-                fullHeight = sectionHeight,
+                fullHeight = nil,
+                maxHeight = sectionMaxHeight,
             })
 
             return sectionFrame, elementsContainer
@@ -22915,7 +22975,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v16-textbox-clear-original"
+Api.__build = "workspace-local-2025-12-28-v17-autosize-sections"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
