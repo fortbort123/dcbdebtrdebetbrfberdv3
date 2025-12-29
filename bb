@@ -1246,6 +1246,8 @@ local function createAsteriaGUI(title, opts)
         menuOpts = menuOpts or {}
         local menuTitle = tostring(menuOpts.title or "Module Settings")
         local menuWidth = tonumber(menuOpts.width) or 240
+        local menuIcon = tostring(menuOpts.icon or "rbxassetid://10734950020")
+        local showSearch = (menuOpts.showSearch ~= false)
 
         local isOpen = false
         local openTween = nil
@@ -1373,23 +1375,111 @@ local function createAsteriaGUI(title, opts)
         pad.PaddingBottom = UDim.new(0, 10)
         pad.Parent = menu
 
+        local TOP_H = 20
+
+        local header = Instance.new("Frame")
+        header.Name = "Header"
+        header.BackgroundTransparency = 1
+        header.BorderSizePixel = 0
+        header.Position = UDim2.new(0, 0, 0, 0)
+        header.Size = UDim2.new(1, 0, 0, TOP_H)
+        header.ZIndex = 20002
+        header.Parent = menu
+
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "Icon"
+        icon.BackgroundTransparency = 1
+        icon.BorderSizePixel = 0
+        icon.AnchorPoint = Vector2.new(0, 0.5)
+        icon.Position = UDim2.new(0, 0, 0.5, 0)
+        icon.Size = UDim2.new(0, 16, 0, 16)
+        icon.Image = menuIcon
+        icon.ImageColor3 = Color3.fromRGB(160, 160, 165)
+        icon.ZIndex = 20003
+        icon.Parent = header
+
         local titleLabel = Instance.new("TextLabel")
         titleLabel.Name = "Title"
         titleLabel.BackgroundTransparency = 1
         titleLabel.BorderSizePixel = 0
-        titleLabel.Position = UDim2.new(0, 0, 0, 0)
-        titleLabel.Size = UDim2.new(1, 0, 0, 20)
+        titleLabel.AnchorPoint = Vector2.new(0, 0.5)
+        titleLabel.Position = UDim2.new(0, 22, 0.5, 0)
+        titleLabel.Size = UDim2.new(1, -22, 1, 0)
         titleLabel.Font = Enum.Font.GothamBold
         titleLabel.TextSize = 13
         titleLabel.TextXAlignment = Enum.TextXAlignment.Left
         titleLabel.TextYAlignment = Enum.TextYAlignment.Center
         titleLabel.TextColor3 = Color3.fromRGB(230, 230, 235)
         titleLabel.Text = menuTitle
-        titleLabel.ZIndex = 20002
-        titleLabel.Parent = menu
+        titleLabel.ZIndex = 20003
+        titleLabel.Parent = header
         titleLabel.TextWrapped = false
         pcall(function()
             titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        end)
+
+        local searchBarFrame = Instance.new("Frame")
+        searchBarFrame.Name = "SearchBarFrame"
+        searchBarFrame.Visible = showSearch
+        searchBarFrame.ClipsDescendants = false
+        searchBarFrame.BorderSizePixel = 0
+        searchBarFrame.BackgroundTransparency = 0
+        searchBarFrame.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+        searchBarFrame.AnchorPoint = Vector2.new(1, 0.5)
+        searchBarFrame.Position = UDim2.new(1, 0, 0.5, 0)
+        searchBarFrame.ZIndex = 20003
+        searchBarFrame.Size = UDim2.new(0, 22, 0, TOP_H)
+        searchBarFrame.Parent = header
+
+        local searchBarCorner = Instance.new("UICorner")
+        searchBarCorner.CornerRadius = UDim.new(0, 6)
+        searchBarCorner.Parent = searchBarFrame
+
+        local searchBarStroke = Instance.new("UIStroke")
+        searchBarStroke.Thickness = 1
+        searchBarStroke.Transparency = 0.75
+        searchBarStroke.Color = Color3.fromRGB(40, 43, 46)
+        searchBarStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        searchBarStroke.LineJoinMode = Enum.LineJoinMode.Round
+        searchBarStroke.Parent = searchBarFrame
+
+        local searchIcon = Instance.new("ImageButton")
+        searchIcon.Name = "SearchIcon"
+        searchIcon.Image = "rbxassetid://10734943674"
+        searchIcon.BackgroundTransparency = 1
+        searchIcon.BorderSizePixel = 0
+        searchIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+        searchIcon.Position = UDim2.new(0, 11, 0.5, 0)
+        searchIcon.Size = UDim2.new(0, 14, 0, 14)
+        searchIcon.AutoButtonColor = true
+        searchIcon.ImageColor3 = Color3.fromRGB(160, 160, 165)
+        searchIcon.ZIndex = 20004
+        searchIcon.Parent = searchBarFrame
+
+        local searchBox = Instance.new("TextBox")
+        searchBox.Name = "SearchBox"
+        searchBox.BackgroundTransparency = 1
+        searchBox.BorderSizePixel = 0
+        searchBox.AnchorPoint = Vector2.new(0, 0.5)
+        searchBox.Position = UDim2.new(0, 22, 0.5, 0)
+        searchBox.Size = UDim2.new(1, -26, 1, -2)
+        searchBox.Font = Enum.Font.GothamBold
+        searchBox.TextSize = 12
+        searchBox.TextXAlignment = Enum.TextXAlignment.Left
+        searchBox.TextYAlignment = Enum.TextYAlignment.Center
+        searchBox.TextColor3 = Color3.fromRGB(230, 230, 230)
+        searchBox.PlaceholderText = "Search..."
+        searchBox.PlaceholderColor3 = Color3.fromRGB(160, 160, 165)
+        searchBox.Text = ""
+        searchBox.Visible = false
+        searchBox.TextTransparency = 1
+        searchBox.ClearTextOnFocus = false
+        searchBox.ZIndex = 20004
+        searchBox.Parent = searchBarFrame
+        searchBox:SetAttribute("AsteriaNoPinkFocus", true)
+        pcall(function()
+            searchBox.SelectionColor3 = Color3.fromRGB(55, 58, 61)
+            searchBox.SelectionTransparency = 0.35
         end)
 
         local divider = Instance.new("Frame")
@@ -1397,7 +1487,7 @@ local function createAsteriaGUI(title, opts)
         divider.BackgroundColor3 = Color3.fromRGB(40, 43, 46)
         divider.BackgroundTransparency = 0.45
         divider.BorderSizePixel = 0
-        divider.Position = UDim2.new(0, 0, 0, 26)
+        divider.Position = UDim2.new(0, 0, 0, 24)
         divider.Size = UDim2.new(1, 0, 0, 1)
         divider.ZIndex = 20002
         divider.Parent = menu
@@ -1406,8 +1496,8 @@ local function createAsteriaGUI(title, opts)
         body.Name = "Body"
         body.BackgroundTransparency = 1
         body.BorderSizePixel = 0
-        body.Position = UDim2.new(0, 0, 0, 30)
-        body.Size = UDim2.new(1, 0, 1, -30)
+        body.Position = UDim2.new(0, 0, 0, 28)
+        body.Size = UDim2.new(1, 0, 1, -28)
         body.ZIndex = 20002
         body.Parent = menu
 
@@ -1416,12 +1506,270 @@ local function createAsteriaGUI(title, opts)
         bodyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
         bodyLayout.VerticalAlignment = Enum.VerticalAlignment.Top
         bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        bodyLayout.Padding = UDim.new(0, 10)
+        bodyLayout.Padding = UDim.new(0, 8)
         bodyLayout.Parent = body
 
         local MENU_PAD_Y = 20 -- 10 top + 10 bottom
-        local MENU_TOP_AREA = 30 -- title + divider spacing before Body starts
+        local MENU_TOP_AREA = 28 -- header + divider spacing before Body starts
         local menuResizeTween = nil
+
+        local function normalizeQuery(q)
+            q = tostring(q or "")
+            q = q:lower()
+            q = q:gsub("^%s+", ""):gsub("%s+$", "")
+            return q
+        end
+
+        local function getRowSearchText(row)
+            if not row then
+                return ""
+            end
+            if row:IsA("TextButton") then
+                return tostring(row.Text or "")
+            end
+            if row:IsA("GuiObject") then
+                local direct = row:FindFirstChild("Label")
+                if direct and direct:IsA("TextLabel") then
+                    return tostring(direct.Text or "")
+                end
+                local deep = row:FindFirstChild("Label", true)
+                if deep and deep:IsA("TextLabel") then
+                    return tostring(deep.Text or "")
+                end
+            end
+            return tostring(row.Name or "")
+        end
+
+        local rowTweens = {}
+        local function tweenRowSize(row, targetH)
+            if not (row and row:IsA("GuiObject")) then
+                return
+            end
+            if rowTweens[row] then
+                rowTweens[row]:Cancel()
+                rowTweens[row] = nil
+            end
+            row.ClipsDescendants = true
+            rowTweens[row] = TweenService:Create(row, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, 0, 0, targetH),
+            })
+            rowTweens[row]:Play()
+        end
+
+        local function showRow(row)
+            if not (row and row:IsA("GuiObject")) then
+                return
+            end
+            local baseH = row:GetAttribute("AsteriaMenuBaseH")
+            if not baseH then
+                baseH = row.Size.Y.Offset
+                row:SetAttribute("AsteriaMenuBaseH", baseH)
+            end
+
+            if row:GetAttribute("AsteriaMenuSearchHidden") == true then
+                row.Visible = true
+                row:SetAttribute("AsteriaMenuSearchHidden", false)
+                row.Size = UDim2.new(1, 0, 0, 0)
+                tweenRowSize(row, baseH)
+            end
+        end
+
+        local function hideRow(row)
+            if not (row and row:IsA("GuiObject")) then
+                return
+            end
+            if row:GetAttribute("AsteriaMenuSearchHidden") == true then
+                return
+            end
+            local baseH = row:GetAttribute("AsteriaMenuBaseH")
+            if not baseH then
+                baseH = row.Size.Y.Offset
+                row:SetAttribute("AsteriaMenuBaseH", baseH)
+            end
+            row:SetAttribute("AsteriaMenuSearchHidden", true)
+            tweenRowSize(row, 0)
+            task.delay(0.13, function()
+                if row and row.Parent and row:GetAttribute("AsteriaMenuSearchHidden") == true then
+                    row.Visible = false
+                end
+            end)
+        end
+
+        local function applyMenuSearchFilter(queryText)
+            local q = normalizeQuery(queryText)
+            for _, child in ipairs(body:GetChildren()) do
+                if child:IsA("GuiObject") and child.Name ~= "UIListLayout" then
+                    local forcedHidden = (child:GetAttribute("AsteriaMenuForcedHidden") == true)
+                    if forcedHidden then
+                        hideRow(child)
+                    elseif q == "" then
+                        showRow(child)
+                    else
+                        local text = getRowSearchText(child):lower()
+                        if string.find(text, q, 1, true) then
+                            showRow(child)
+                        else
+                            hideRow(child)
+                        end
+                    end
+                end
+            end
+        end
+
+        do
+            -- Mini search behavior: hover tint + expand/collapse + filter
+            local defaultIconColor = Color3.fromRGB(160, 160, 165)
+            local hoverIconColor = ACCENT_PRIMARY
+            local iconTweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local activeIconTween = nil
+
+            local defaultStrokeTransparency = 0.75
+            local typingStrokeTransparency = 0.3
+            local strokeTweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local activeStrokeTween = nil
+
+            local function tweenIconColor(target)
+                if activeIconTween then
+                    activeIconTween:Cancel()
+                end
+                activeIconTween = TweenService:Create(searchIcon, iconTweenInfo, { ImageColor3 = target })
+                activeIconTween:Play()
+            end
+
+            local function tweenStrokeTransparency(target)
+                if activeStrokeTween then
+                    activeStrokeTween:Cancel()
+                end
+                activeStrokeTween = TweenService:Create(searchBarStroke, strokeTweenInfo, { Transparency = target })
+                activeStrokeTween:Play()
+            end
+
+            local collapsedSize = UDim2.new(0, 22, 0, TOP_H)
+            local expandedSize = UDim2.new(1, -22, 0, TOP_H)
+            local overshootSize = UDim2.new(1, -16, 0, TOP_H)
+            local expandTweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local overshootTweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local settleTweenInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+            local expanded = false
+            local activeExpandTween = nil
+            local activeSettleTween = nil
+            local activeTextFadeTween = nil
+            local activeTitleFadeTween = nil
+
+            local function expandSearch()
+                if not showSearch then
+                    return
+                end
+                if expanded then
+                    return
+                end
+                expanded = true
+
+                searchBox.Visible = true
+                searchBox.TextTransparency = 1
+
+                if activeTitleFadeTween then
+                    activeTitleFadeTween:Cancel()
+                end
+                activeTitleFadeTween = TweenService:Create(titleLabel, expandTweenInfo, { TextTransparency = 1 })
+                activeTitleFadeTween:Play()
+
+                if activeExpandTween then
+                    activeExpandTween:Cancel()
+                end
+                if activeSettleTween then
+                    activeSettleTween:Cancel()
+                end
+                activeExpandTween = TweenService:Create(searchBarFrame, overshootTweenInfo, { Size = overshootSize })
+                activeExpandTween:Play()
+                activeExpandTween.Completed:Once(function()
+                    if not expanded then
+                        return
+                    end
+                    activeSettleTween = TweenService:Create(searchBarFrame, settleTweenInfo, { Size = expandedSize })
+                    activeSettleTween:Play()
+                end)
+
+                if activeTextFadeTween then
+                    activeTextFadeTween:Cancel()
+                end
+                activeTextFadeTween = TweenService:Create(searchBox, expandTweenInfo, { TextTransparency = 0 })
+                activeTextFadeTween:Play()
+            end
+
+            local function collapseSearch()
+                if not expanded then
+                    return
+                end
+                expanded = false
+
+                if activeTitleFadeTween then
+                    activeTitleFadeTween:Cancel()
+                end
+                activeTitleFadeTween = TweenService:Create(titleLabel, expandTweenInfo, { TextTransparency = 0 })
+                activeTitleFadeTween:Play()
+
+                if activeExpandTween then
+                    activeExpandTween:Cancel()
+                end
+                if activeSettleTween then
+                    activeSettleTween:Cancel()
+                end
+                activeExpandTween = TweenService:Create(searchBarFrame, expandTweenInfo, { Size = collapsedSize })
+                activeExpandTween:Play()
+
+                if activeTextFadeTween then
+                    activeTextFadeTween:Cancel()
+                end
+                activeTextFadeTween = TweenService:Create(searchBox, expandTweenInfo, { TextTransparency = 1 })
+                activeTextFadeTween:Play()
+                activeExpandTween.Completed:Once(function()
+                    if not expanded then
+                        searchBox.Visible = false
+                    end
+                end)
+
+                if searchBox.Text ~= "" then
+                    searchBox.Text = ""
+                end
+                applyMenuSearchFilter("")
+            end
+
+            searchBarFrame.Active = true
+            searchBarFrame.Size = collapsedSize
+
+            searchBarFrame.MouseEnter:Connect(function()
+                tweenIconColor(hoverIconColor)
+            end)
+            searchBarFrame.MouseLeave:Connect(function()
+                tweenIconColor(defaultIconColor)
+            end)
+
+            searchIcon.MouseButton1Click:Connect(function()
+                if not expanded then
+                    expandSearch()
+                    searchBox:CaptureFocus()
+                else
+                    collapseSearch()
+                end
+            end)
+
+            searchBox.Focused:Connect(function()
+                expandSearch()
+                tweenStrokeTransparency(typingStrokeTransparency)
+            end)
+            searchBox.FocusLost:Connect(function()
+                tweenStrokeTransparency(defaultStrokeTransparency)
+                if searchBox.Text == "" then
+                    collapseSearch()
+                end
+            end)
+
+            searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+                applyMenuSearchFilter(searchBox.Text)
+            end)
+        end
 
         local function computeTargetHeight()
             local contentH = 0
@@ -1473,9 +1821,9 @@ local function createAsteriaGUI(title, opts)
             button.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
             button.BackgroundTransparency = 0
             button.BorderSizePixel = 0
-            button.Size = UDim2.new(1, 0, 0, 28)
+            button.Size = UDim2.new(1, 0, 0, 22)
             button.Font = Enum.Font.GothamBold
-            button.TextSize = 12
+            button.TextSize = 11
             button.TextColor3 = Color3.fromRGB(230, 230, 230)
             button.Text = text
             button.ZIndex = 20003
@@ -1541,7 +1889,7 @@ local function createAsteriaGUI(title, opts)
             row.Name = labelText:gsub("%s+", "") .. "ToggleRow"
             row.BackgroundTransparency = 1
             row.BorderSizePixel = 0
-            row.Size = UDim2.new(1, 0, 0, 28)
+            row.Size = UDim2.new(1, 0, 0, 22)
             row.ZIndex = 20003
             row.Parent = body
 
@@ -1552,7 +1900,7 @@ local function createAsteriaGUI(title, opts)
             label.Position = UDim2.new(0, 0, 0, 0)
             label.Size = UDim2.new(1, -34, 1, 0)
             label.Font = Enum.Font.GothamBold
-            label.TextSize = 12
+            label.TextSize = 11
             label.TextXAlignment = Enum.TextXAlignment.Left
             label.TextYAlignment = Enum.TextYAlignment.Center
             label.TextColor3 = Color3.fromRGB(160, 160, 165)
@@ -1569,7 +1917,7 @@ local function createAsteriaGUI(title, opts)
             toggle.Text = ""
             toggle.AnchorPoint = Vector2.new(1, 0.5)
             toggle.Position = UDim2.new(1, 0, 0.5, 0)
-            toggle.Size = UDim2.new(0, 20, 0, 20)
+            toggle.Size = UDim2.new(0, 18, 0, 18)
             toggle.ZIndex = 20004
             toggle.Parent = row
 
@@ -1665,7 +2013,7 @@ local function createAsteriaGUI(title, opts)
             row.Name = labelText:gsub("%s+", "") .. "SliderRow"
             row.BackgroundTransparency = 1
             row.BorderSizePixel = 0
-            row.Size = UDim2.new(1, 0, 0, 40)
+            row.Size = UDim2.new(1, 0, 0, 34)
             row.ZIndex = 20003
             row.Parent = body
 
@@ -1677,7 +2025,7 @@ local function createAsteriaGUI(title, opts)
             labelFrame.Name = "Frame"
             labelFrame.BackgroundTransparency = 1
             labelFrame.BorderSizePixel = 0
-            labelFrame.Size = UDim2.new(1, 0, 0, 16)
+            labelFrame.Size = UDim2.new(1, 0, 0, 14)
             labelFrame.Position = UDim2.new(0, 0, 0, 0)
             labelFrame.ZIndex = 20004
             labelFrame.Parent = row
@@ -1704,7 +2052,7 @@ local function createAsteriaGUI(title, opts)
             valueTextBox.BorderSizePixel = 0
             valueTextBox.AnchorPoint = Vector2.new(1, 0)
             valueTextBox.Position = UDim2.new(1, 0, 0, 0)
-            valueTextBox.Size = UDim2.new(0, 52, 0, 16)
+            valueTextBox.Size = UDim2.new(0, 52, 0, 14)
             valueTextBox.Font = Enum.Font.Code
             valueTextBox.TextSize = 12
             valueTextBox.TextXAlignment = Enum.TextXAlignment.Center
@@ -1738,7 +2086,7 @@ local function createAsteriaGUI(title, opts)
             trackArea.Name = "SliderTrackArea"
             trackArea.BackgroundTransparency = 1
             trackArea.BorderSizePixel = 0
-            trackArea.Position = UDim2.new(0, 0, 0, 20)
+            trackArea.Position = UDim2.new(0, 0, 0, 16)
             trackArea.Size = UDim2.new(1, 0, 0, 16)
             trackArea.ZIndex = 20004
             trackArea.Parent = row
@@ -1808,7 +2156,7 @@ local function createAsteriaGUI(title, opts)
             local bubble = Instance.new("TextLabel")
             bubble.Name = "DragBubbleValue"
             bubble.AnchorPoint = Vector2.new(0.5, 1)
-            bubble.Position = UDim2.new(0, 13, 0, 28)
+            bubble.Position = UDim2.new(0, 13, 0, 26)
             bubble.Size = UDim2.new(0, 30, 0, 18)
             bubble.BackgroundTransparency = 1
             bubble.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
