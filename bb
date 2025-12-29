@@ -1805,9 +1805,67 @@ local function createAsteriaGUI(title, opts)
 
         local api = {}
 
+        local function setMenuIcon(imageId)
+            if type(imageId) ~= "string" or imageId == "" then
+                return
+            end
+            icon.Image = imageId
+        end
+
+        local function findNearestSectionIcon(fromGuiObject)
+            local node = fromGuiObject
+            while node do
+                if node.FindFirstChild then
+                    local header = node:FindFirstChild("Header")
+                    if header and header:IsA("Frame") then
+                        local iconContainer = header:FindFirstChild("IconContainer")
+                        if iconContainer and iconContainer.FindFirstChild then
+                            local headerIcon = iconContainer:FindFirstChild("Icon")
+                            if headerIcon and headerIcon:IsA("ImageLabel") then
+                                local img = headerIcon.Image
+                                if type(img) == "string" and img ~= "" then
+                                    return img
+                                end
+                            end
+                        end
+
+                        -- Fallback: some builds may name the icon differently.
+                        local anyIcon = header:FindFirstChild("Icon", true)
+                        if anyIcon and anyIcon:IsA("ImageLabel") then
+                            local img = anyIcon.Image
+                            if type(img) == "string" and img ~= "" then
+                                return img
+                            end
+                        end
+                    end
+                end
+                node = node.Parent
+            end
+            return nil
+        end
+
+        local function coerceGuiObject(x)
+            if typeof(x) == "Instance" then
+                return x
+            end
+            if type(x) == "table" then
+                for _, k in ipairs({ "GuiObject", "Instance", "Root", "Button", "Frame" }) do
+                    local v = rawget(x, k)
+                    if typeof(v) == "Instance" then
+                        return v
+                    end
+                end
+            end
+            return nil
+        end
+
         function api:SetTitle(newTitle)
             menuTitle = tostring(newTitle or menuTitle)
             titleLabel.Text = menuTitle
+        end
+
+        function api:SetIcon(imageId)
+            setMenuIcon(imageId)
         end
 
         function api:AddButton(t)
@@ -2310,12 +2368,15 @@ local function createAsteriaGUI(title, opts)
         end
 
         function api:Bind(guiObject)
-            if not (guiObject and guiObject.InputBegan) then
+            local target = coerceGuiObject(guiObject)
+            if not (target and target.InputBegan) then
                 return
             end
-            guiObject.Active = true
-            table.insert(conns, guiObject.InputBegan:Connect(function(input)
+            target.Active = true
+            table.insert(conns, target.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    local sectionIcon = findNearestSectionIcon(target)
+                    setMenuIcon(sectionIcon or menuIcon)
                     api:OpenAtMouse()
                 end
             end))
