@@ -740,11 +740,33 @@ local function installUniversalSliderBindings(rootGui, opts)
             return math.clamp((v - minV) / (maxV - minV), 0, 1)
         end
 
+        local function safeHandleOffset(r)
+            -- When parent rows animate with ClipsDescendants=true (e.g. during search filtering),
+            -- a handle positioned at r=0 or r=1 would be half outside the row and get clipped.
+            -- Offset the handle so its full width stays inside the track.
+            local w = 0
+            pcall(function()
+                w = tonumber(parts.handle.Size.X.Offset) or 0
+            end)
+            if w <= 0 then
+                pcall(function()
+                    w = parts.handle.AbsoluteSize.X
+                end)
+            end
+            if w <= 0 then
+                w = 14
+            end
+            -- Keep the handle center within [w/2, trackW - w/2] without needing trackW:
+            -- centerX = r*trackW + (0.5 - r)*w
+            return (0.5 - r) * w
+        end
+
         local function applyVisual(r)
             parts.fillBar.Size = UDim2.new(r, 0, 1, 0)
-            parts.handle.Position = UDim2.new(r, 0, 0.5, 0)
+            local xOff = safeHandleOffset(r)
+            parts.handle.Position = UDim2.new(r, xOff, 0.5, 0)
             if parts.bubble and parts.bubble:IsA("TextLabel") then
-                parts.bubble.Position = UDim2.new(r, 0, 0, 28)
+                parts.bubble.Position = UDim2.new(r, xOff, 0, 28)
             end
         end
 
@@ -800,19 +822,29 @@ local function installUniversalSliderBindings(rootGui, opts)
 
             local r = ratioFromValue(currentValue)
             if tween then
+                local xOff = safeHandleOffset(r)
                 TweenService:Create(parts.fillBar, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     Size = UDim2.new(r, 0, 1, 0),
                 }):Play()
                 TweenService:Create(parts.handle, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    Position = UDim2.new(r, 0, 0.5, 0),
+                    Position = UDim2.new(r, xOff, 0.5, 0),
                 }):Play()
                 if parts.bubble and parts.bubble:IsA("TextLabel") then
-                    parts.bubble.Position = UDim2.new(r, 0, 0, 28)
+                    parts.bubble.Position = UDim2.new(r, xOff, 0, 28)
                 end
             else
                 applyVisual(r)
             end
         end
+
+        -- Allow external code (like context menus) to programmatically set the slider.
+        -- Usage: sliderRow:SetAttribute("AsteriaSliderExternalValue", number)
+        sliderRow:GetAttributeChangedSignal("AsteriaSliderExternalValue"):Connect(function()
+            local n = tonumber(sliderRow:GetAttribute("AsteriaSliderExternalValue"))
+            if n ~= nil then
+                setValue(n, true)
+            end
+        end)
 
         local function ratioFromInputX(x)
             local absPos = parts.track.AbsolutePosition
@@ -1120,6 +1152,16 @@ local function createAsteriaGUI(title, opts)
     screenGui.Parent = CoreGui
     enableTextboxNoBreak(screenGui)
 
+    -- Right-click context menus live here (used by gui.ModuleSetting)
+    local contextLayer = Instance.new("Frame")
+    contextLayer.Name = "ContextMenus"
+    contextLayer.BackgroundTransparency = 1
+    contextLayer.BorderSizePixel = 0
+    contextLayer.Size = UDim2.new(1, 0, 1, 0)
+    contextLayer.Position = UDim2.new(0, 0, 0, 0)
+    contextLayer.ZIndex = 20000
+    contextLayer.Parent = screenGui
+
     -- Main Frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
@@ -1191,6 +1233,760 @@ local function createAsteriaGUI(title, opts)
     local ACCENT_LIGHT = Color3.fromRGB(255, 190, 225)
     -- Match the UI's existing "black" (dark gray) used across surfaces.
     local ACCENT_BLACK = Color3.fromRGB(27, 30, 33)
+
+    -- Generic right-click context menu builder (ModuleSetting)
+    -- Usage:
+    --   local menu = gui.ModuleSetting({ title = "Auto Plant" })
+    --   menu:AddButton({ name = "Do thing", callback = function() end })
+    --   menu:AddToggle({ name = "Enabled", default = true, callback = function(v) end })
+    --   menu:AddSlider({ name = "Speed", min = 1, max = 30, step = 1, default = 6, callback = function(v) end })
+    --   menu:Bind(someGuiObject) -- right click opens
+    local activeModuleSettingMenu = nil
+    local function createModuleSetting(menuOpts)
+        menuOpts = menuOpts or {}
+        local menuTitle = tostring(menuOpts.title or "Module Settings")
+        local menuWidth = tonumber(menuOpts.width) or 240
+
+        local isOpen = false
+        local openTween = nil
+        local closeTween = nil
+        local conns = {}
+
+        local function disconnectConns()
+            for _, c in ipairs(conns) do
+                pcall(function()
+                    c:Disconnect()
+                end)
+            end
+            table.clear(conns)
+        end
+
+        local function isPointInGuiObject(guiObject, point)
+            if not (guiObject and guiObject.AbsoluteSize) then
+                return false
+            end
+            local p = guiObject.AbsolutePosition
+            local s = guiObject.AbsoluteSize
+            return point.X >= p.X and point.Y >= p.Y and point.X <= (p.X + s.X) and point.Y <= (p.Y + s.Y)
+        end
+
+        local function createSheenAndShadeOverlays(parent, cornerRadius)
+            local sheenOverlay = Instance.new("Frame")
+            sheenOverlay.Name = "SheenOverlay"
+            sheenOverlay.BackgroundTransparency = 1
+            sheenOverlay.BorderSizePixel = 0
+            sheenOverlay.Size = UDim2.new(1, 0, 1, 0)
+            sheenOverlay.Position = UDim2.new(0, 0, 0, 0)
+            sheenOverlay.ZIndex = (parent.ZIndex or 1) + 1
+            sheenOverlay.Parent = parent
+
+            local sheenCorner = Instance.new("UICorner")
+            sheenCorner.CornerRadius = cornerRadius
+            sheenCorner.Parent = sheenOverlay
+
+            local sheenGradient = Instance.new("UIGradient")
+            sheenGradient.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.9),
+                NumberSequenceKeypoint.new(0.3, 0.96),
+                NumberSequenceKeypoint.new(0.5, 1),
+                NumberSequenceKeypoint.new(1, 1),
+            })
+            sheenGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+            })
+            sheenGradient.Rotation = 90
+            sheenGradient.Parent = sheenOverlay
+
+            local shadeOverlay = Instance.new("Frame")
+            shadeOverlay.Name = "ShadeOverlay"
+            shadeOverlay.BackgroundTransparency = 1
+            shadeOverlay.BorderSizePixel = 0
+            shadeOverlay.Size = UDim2.new(1, 0, 1, 0)
+            shadeOverlay.Position = UDim2.new(0, 0, 0, 0)
+            shadeOverlay.ZIndex = (parent.ZIndex or 1) + 1
+            shadeOverlay.Parent = parent
+
+            local shadeCorner = Instance.new("UICorner")
+            shadeCorner.CornerRadius = cornerRadius
+            shadeCorner.Parent = shadeOverlay
+
+            local shadeGradient = Instance.new("UIGradient")
+            shadeGradient.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.6, 1),
+                NumberSequenceKeypoint.new(0.85, 0.96),
+                NumberSequenceKeypoint.new(1, 0.92),
+            })
+            shadeGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
+            })
+            shadeGradient.Rotation = 90
+            shadeGradient.Parent = shadeOverlay
+        end
+
+        local menu = Instance.new("Frame")
+        menu.Name = "ModuleSettingMenu"
+        menu.Visible = false
+        menu.ClipsDescendants = true
+        menu.BorderSizePixel = 0
+        menu.BackgroundColor3 = Color3.fromRGB(23, 25, 28)
+        menu.BackgroundTransparency = 0.06
+        menu.Size = UDim2.new(0, menuWidth, 0, 120)
+        menu.Position = UDim2.new(0, 0, 0, 0)
+        menu.ZIndex = 20001
+        menu.Parent = contextLayer
+
+        menu:SetAttribute("MenuW", menuWidth)
+        menu:SetAttribute("MenuH", 120)
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 10)
+        corner.Parent = menu
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 1
+        stroke.Transparency = 0.45
+        stroke.Color = Color3.fromRGB(40, 43, 46)
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.LineJoinMode = Enum.LineJoinMode.Round
+        stroke.Parent = menu
+
+        local gradient = Instance.new("UIGradient")
+        gradient.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.12),
+            NumberSequenceKeypoint.new(0.5, 0.18),
+            NumberSequenceKeypoint.new(1, 0.12),
+        })
+        gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+        })
+        gradient.Rotation = 90
+        gradient.Parent = menu
+
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft = UDim.new(0, 10)
+        pad.PaddingRight = UDim.new(0, 10)
+        pad.PaddingTop = UDim.new(0, 10)
+        pad.PaddingBottom = UDim.new(0, 10)
+        pad.Parent = menu
+
+        local titleLabel = Instance.new("TextLabel")
+        titleLabel.Name = "Title"
+        titleLabel.BackgroundTransparency = 1
+        titleLabel.BorderSizePixel = 0
+        titleLabel.Position = UDim2.new(0, 0, 0, 0)
+        titleLabel.Size = UDim2.new(1, 0, 0, 20)
+        titleLabel.Font = Enum.Font.GothamBold
+        titleLabel.TextSize = 13
+        titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+        titleLabel.TextYAlignment = Enum.TextYAlignment.Center
+        titleLabel.TextColor3 = Color3.fromRGB(230, 230, 235)
+        titleLabel.Text = menuTitle
+        titleLabel.ZIndex = 20002
+        titleLabel.Parent = menu
+        titleLabel.TextWrapped = false
+        pcall(function()
+            titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        end)
+
+        local divider = Instance.new("Frame")
+        divider.Name = "Divider"
+        divider.BackgroundColor3 = Color3.fromRGB(40, 43, 46)
+        divider.BackgroundTransparency = 0.45
+        divider.BorderSizePixel = 0
+        divider.Position = UDim2.new(0, 0, 0, 26)
+        divider.Size = UDim2.new(1, 0, 0, 1)
+        divider.ZIndex = 20002
+        divider.Parent = menu
+
+        local body = Instance.new("Frame")
+        body.Name = "Body"
+        body.BackgroundTransparency = 1
+        body.BorderSizePixel = 0
+        body.Position = UDim2.new(0, 0, 0, 30)
+        body.Size = UDim2.new(1, 0, 1, -30)
+        body.ZIndex = 20002
+        body.Parent = menu
+
+        local bodyLayout = Instance.new("UIListLayout")
+        bodyLayout.FillDirection = Enum.FillDirection.Vertical
+        bodyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        bodyLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+        bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        bodyLayout.Padding = UDim.new(0, 10)
+        bodyLayout.Parent = body
+
+        local MENU_PAD_Y = 20 -- 10 top + 10 bottom
+        local MENU_TOP_AREA = 30 -- title + divider spacing before Body starts
+        local menuResizeTween = nil
+
+        local function computeTargetHeight()
+            local contentH = 0
+            pcall(function()
+                contentH = bodyLayout.AbsoluteContentSize.Y
+            end)
+            local target = MENU_PAD_Y + MENU_TOP_AREA + contentH
+            local minH = MENU_PAD_Y + MENU_TOP_AREA
+            return math.max(target, minH)
+        end
+
+        local function applyMenuHeight(h, tween)
+            h = math.max(tonumber(h) or 0, MENU_PAD_Y + MENU_TOP_AREA)
+            local w = menu:GetAttribute("MenuW") or menuWidth
+            menu:SetAttribute("MenuH", h)
+            if menuResizeTween then
+                menuResizeTween:Cancel()
+                menuResizeTween = nil
+            end
+            if tween and menu.Visible then
+                menuResizeTween = TweenService:Create(menu, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Size = UDim2.new(0, w, 0, h),
+                })
+                menuResizeTween:Play()
+            else
+                menu.Size = UDim2.new(0, w, 0, h)
+            end
+        end
+
+        bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            applyMenuHeight(computeTargetHeight(), true)
+        end)
+
+        local api = {}
+
+        function api:SetTitle(newTitle)
+            menuTitle = tostring(newTitle or menuTitle)
+            titleLabel.Text = menuTitle
+        end
+
+        function api:AddButton(t)
+            t = t or {}
+            local text = tostring(t.name or t.title or "Button")
+            local callback = t.callback or t.onClick
+
+            local button = Instance.new("TextButton")
+            button.Name = text:gsub("%s+", "") .. "Button"
+            button.AutoButtonColor = false
+            button.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            button.BackgroundTransparency = 0
+            button.BorderSizePixel = 0
+            button.Size = UDim2.new(1, 0, 0, 28)
+            button.Font = Enum.Font.GothamBold
+            button.TextSize = 12
+            button.TextColor3 = Color3.fromRGB(230, 230, 230)
+            button.Text = text
+            button.ZIndex = 20003
+            button.Parent = body
+
+            local c = Instance.new("UICorner")
+            c.CornerRadius = UDim.new(0, 8)
+            c.Parent = button
+
+            local s = Instance.new("UIStroke")
+            s.Thickness = 1
+            s.Transparency = 0.4
+            s.Color = Color3.fromRGB(55, 58, 61)
+            s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            s.LineJoinMode = Enum.LineJoinMode.Round
+            s.Parent = button
+
+            createSheenAndShadeOverlays(button, UDim.new(0, 8))
+
+            do
+                local defaultStrokeColor = s.Color
+                local defaultStrokeTransparency = s.Transparency
+                local hoverStrokeColor = Color3.fromRGB(145, 145, 150)
+                local hoverStrokeTransparency = 0.32
+                local defaultBg = button.BackgroundColor3
+                local hoverBg = Color3.fromRGB(25, 28, 31)
+                local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local strokeTween
+                local bgTween
+                local function play(isHover)
+                    if strokeTween then strokeTween:Cancel() end
+                    if bgTween then bgTween:Cancel() end
+                    strokeTween = TweenService:Create(s, tweenInfo, {
+                        Color = isHover and hoverStrokeColor or defaultStrokeColor,
+                        Transparency = isHover and hoverStrokeTransparency or defaultStrokeTransparency,
+                    })
+                    bgTween = TweenService:Create(button, tweenInfo, {
+                        BackgroundColor3 = isHover and hoverBg or defaultBg,
+                    })
+                    strokeTween:Play()
+                    bgTween:Play()
+                end
+                button.MouseEnter:Connect(function() play(true) end)
+                button.MouseLeave:Connect(function() play(false) end)
+            end
+
+            if type(callback) == "function" then
+                button.MouseButton1Click:Connect(function()
+                    callback()
+                end)
+            end
+
+            return button
+        end
+
+        function api:AddToggle(t)
+            t = t or {}
+            local labelText = tostring(t.name or t.title or "Toggle")
+            local defaultValue = (t.default == true)
+            local callback = t.callback or t.onChanged
+
+            local row = Instance.new("Frame")
+            row.Name = labelText:gsub("%s+", "") .. "ToggleRow"
+            row.BackgroundTransparency = 1
+            row.BorderSizePixel = 0
+            row.Size = UDim2.new(1, 0, 0, 28)
+            row.ZIndex = 20003
+            row.Parent = body
+
+            local label = Instance.new("TextLabel")
+            label.Name = "Label"
+            label.BackgroundTransparency = 1
+            label.BorderSizePixel = 0
+            label.Position = UDim2.new(0, 0, 0, 0)
+            label.Size = UDim2.new(1, -34, 1, 0)
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 12
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.TextYAlignment = Enum.TextYAlignment.Center
+            label.TextColor3 = Color3.fromRGB(160, 160, 165)
+            label.Text = labelText
+            label.ZIndex = 20004
+            label.Parent = row
+
+            local toggle = Instance.new("TextButton")
+            toggle.Name = "Toggle"
+            toggle.AutoButtonColor = false
+            toggle.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            toggle.BackgroundTransparency = 0.15
+            toggle.BorderSizePixel = 0
+            toggle.Text = ""
+            toggle.AnchorPoint = Vector2.new(1, 0.5)
+            toggle.Position = UDim2.new(1, 0, 0.5, 0)
+            toggle.Size = UDim2.new(0, 20, 0, 20)
+            toggle.ZIndex = 20004
+            toggle.Parent = row
+
+            local tc = Instance.new("UICorner")
+            tc.CornerRadius = UDim.new(0, 6)
+            tc.Parent = toggle
+
+            local ts = Instance.new("UIStroke")
+            ts.Thickness = 1
+            ts.Transparency = 0.55
+            ts.Color = Color3.fromRGB(55, 58, 61)
+            ts.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            ts.LineJoinMode = Enum.LineJoinMode.Round
+            ts.Parent = toggle
+
+            createSheenAndShadeOverlays(toggle, UDim.new(0, 6))
+
+            local check = Instance.new("ImageLabel")
+            check.Name = "Check"
+            check.BackgroundTransparency = 1
+            check.BorderSizePixel = 0
+            check.AnchorPoint = Vector2.new(0.5, 0.5)
+            check.Position = UDim2.new(0.5, 0, 0.5, 0)
+            check.Size = UDim2.new(1, -6, 1, -6)
+            check.Image = "rbxassetid://10709790644"
+            check.ImageColor3 = Color3.fromRGB(230, 230, 235)
+            check.ImageTransparency = defaultValue and 0 or 1
+            check.ZIndex = 20005
+            check.Parent = toggle
+
+            toggle:SetAttribute("AsteriaChecked", defaultValue)
+
+            do
+                local defaultStrokeColor = ts.Color
+                local defaultStrokeTransparency = ts.Transparency
+                local hoverStrokeColor = Color3.fromRGB(160, 160, 165)
+                local hoverStrokeTransparency = 0.25
+                local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local strokeTween
+                toggle.MouseEnter:Connect(function()
+                    if strokeTween then strokeTween:Cancel() end
+                    strokeTween = TweenService:Create(ts, tweenInfo, {
+                        Color = hoverStrokeColor,
+                        Transparency = hoverStrokeTransparency,
+                    })
+                    strokeTween:Play()
+                end)
+                toggle.MouseLeave:Connect(function()
+                    if strokeTween then strokeTween:Cancel() end
+                    strokeTween = TweenService:Create(ts, tweenInfo, {
+                        Color = defaultStrokeColor,
+                        Transparency = defaultStrokeTransparency,
+                    })
+                    strokeTween:Play()
+                end)
+            end
+
+            local checkTween
+            local function refresh()
+                if checkTween then checkTween:Cancel() end
+                local on = (toggle:GetAttribute("AsteriaChecked") == true)
+                checkTween = TweenService:Create(check, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    ImageTransparency = on and 0 or 1,
+                })
+                checkTween:Play()
+            end
+            refresh()
+
+            toggle.MouseButton1Click:Connect(function()
+                toggle:SetAttribute("AsteriaChecked", not (toggle:GetAttribute("AsteriaChecked") == true))
+                refresh()
+                if type(callback) == "function" then
+                    callback(toggle:GetAttribute("AsteriaChecked") == true)
+                end
+            end)
+
+            return row
+        end
+
+        function api:AddSlider(t)
+            t = t or {}
+            local labelText = tostring(t.name or t.title or "Slider")
+            local minV = tonumber(t.min) or 0
+            local maxV = tonumber(t.max) or 100
+            local stepV = tonumber(t.step) or 1
+            local defaultValue = tonumber(t.default)
+            if defaultValue == nil then
+                defaultValue = minV
+            end
+            local callback = t.callback or t.onChanged
+
+            local row = Instance.new("Frame")
+            row.Name = labelText:gsub("%s+", "") .. "SliderRow"
+            row.BackgroundTransparency = 1
+            row.BorderSizePixel = 0
+            row.Size = UDim2.new(1, 0, 0, 40)
+            row.ZIndex = 20003
+            row.Parent = body
+
+            row:SetAttribute("AsteriaSliderMin", minV)
+            row:SetAttribute("AsteriaSliderMax", maxV)
+            row:SetAttribute("AsteriaSliderStep", stepV)
+
+            local labelFrame = Instance.new("Frame")
+            labelFrame.Name = "Frame"
+            labelFrame.BackgroundTransparency = 1
+            labelFrame.BorderSizePixel = 0
+            labelFrame.Size = UDim2.new(1, 0, 0, 16)
+            labelFrame.Position = UDim2.new(0, 0, 0, 0)
+            labelFrame.ZIndex = 20004
+            labelFrame.Parent = row
+
+            local label = Instance.new("TextLabel")
+            label.Name = "Label"
+            label.BackgroundTransparency = 1
+            label.BorderSizePixel = 0
+            label.Position = UDim2.new(0, 0, 0, 0)
+            label.Size = UDim2.new(1, -56, 1, 0)
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 11
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.TextYAlignment = Enum.TextYAlignment.Center
+            label.TextColor3 = Color3.fromRGB(160, 160, 165)
+            label.Text = labelText
+            label.ZIndex = 20005
+            label.Parent = labelFrame
+
+            local valueTextBox = Instance.new("TextBox")
+            valueTextBox.Name = "ValueTextBox"
+            valueTextBox.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            valueTextBox.BackgroundTransparency = 0.3
+            valueTextBox.BorderSizePixel = 0
+            valueTextBox.AnchorPoint = Vector2.new(1, 0)
+            valueTextBox.Position = UDim2.new(1, 0, 0, 0)
+            valueTextBox.Size = UDim2.new(0, 52, 0, 16)
+            valueTextBox.Font = Enum.Font.Code
+            valueTextBox.TextSize = 12
+            valueTextBox.TextXAlignment = Enum.TextXAlignment.Center
+            valueTextBox.TextYAlignment = Enum.TextYAlignment.Center
+            valueTextBox.TextColor3 = Color3.fromRGB(160, 160, 165)
+            valueTextBox.PlaceholderText = tostring(defaultValue)
+            valueTextBox.PlaceholderColor3 = Color3.fromRGB(178, 178, 178)
+            valueTextBox.ClearTextOnFocus = false
+            valueTextBox.Text = tostring(defaultValue)
+            valueTextBox.ZIndex = 20005
+            valueTextBox.Parent = labelFrame
+            valueTextBox:SetAttribute("AsteriaNoPinkFocus", true)
+            pcall(function()
+                valueTextBox.SelectionColor3 = Color3.fromRGB(55, 58, 61)
+                valueTextBox.SelectionTransparency = 0.35
+            end)
+
+            local tbCorner = Instance.new("UICorner")
+            tbCorner.CornerRadius = UDim.new(0, 4)
+            tbCorner.Parent = valueTextBox
+
+            local tbStroke = Instance.new("UIStroke")
+            tbStroke.Thickness = 1
+            tbStroke.Transparency = 0.5
+            tbStroke.Color = Color3.fromRGB(40, 43, 46)
+            tbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            tbStroke.LineJoinMode = Enum.LineJoinMode.Round
+            tbStroke.Parent = valueTextBox
+
+            local trackArea = Instance.new("Frame")
+            trackArea.Name = "SliderTrackArea"
+            trackArea.BackgroundTransparency = 1
+            trackArea.BorderSizePixel = 0
+            trackArea.Position = UDim2.new(0, 0, 0, 20)
+            trackArea.Size = UDim2.new(1, 0, 0, 16)
+            trackArea.ZIndex = 20004
+            trackArea.Parent = row
+
+            local track = Instance.new("Frame")
+            track.Name = "TrackVisual"
+            track.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            track.BackgroundTransparency = 0
+            track.BorderSizePixel = 0
+            track.Position = UDim2.new(0, 0, 0.5, -2)
+            track.Size = UDim2.new(1, 0, 0, 4)
+            track.ZIndex = 20004
+            track.Parent = trackArea
+
+            local trackCorner = Instance.new("UICorner")
+            trackCorner.CornerRadius = UDim.new(0, 100)
+            trackCorner.Parent = track
+
+            local trackStroke = Instance.new("UIStroke")
+            trackStroke.Thickness = 1
+            trackStroke.Transparency = 0.7
+            trackStroke.Color = Color3.fromRGB(40, 43, 46)
+            trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            trackStroke.LineJoinMode = Enum.LineJoinMode.Round
+            trackStroke.Parent = track
+
+            local fillBar = Instance.new("Frame")
+            fillBar.Name = "FillBar"
+            fillBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            fillBar.BackgroundTransparency = 0
+            fillBar.BorderSizePixel = 0
+            fillBar.Position = UDim2.new(0, 0, 0, 0)
+            fillBar.Size = UDim2.new(0, 0, 1, 0)
+            fillBar.ZIndex = 20005
+            fillBar.Parent = track
+
+            local fillCorner = Instance.new("UICorner")
+            fillCorner.CornerRadius = UDim.new(0, 100)
+            fillCorner.Parent = fillBar
+
+            local handle = Instance.new("Frame")
+            handle.Name = "Handle"
+            handle.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
+            handle.BackgroundTransparency = 0
+            handle.BorderSizePixel = 0
+            handle.AnchorPoint = Vector2.new(0.5, 0.5)
+            handle.Position = UDim2.new(0, 0, 0.5, 0)
+            handle.Size = UDim2.new(0, 12, 0, 12)
+            handle.ZIndex = 20006
+            handle.Parent = trackArea
+
+            local handleCorner = Instance.new("UICorner")
+            handleCorner.CornerRadius = UDim.new(0, 100)
+            handleCorner.Parent = handle
+
+            local clickArea = Instance.new("TextButton")
+            clickArea.Name = "ClickArea"
+            clickArea.BackgroundTransparency = 1
+            clickArea.BorderSizePixel = 0
+            clickArea.Size = UDim2.new(1, 0, 1, 0)
+            clickArea.Position = UDim2.new(0, 0, 0, 0)
+            clickArea.Text = ""
+            clickArea.AutoButtonColor = false
+            clickArea.ZIndex = 20007
+            clickArea.Parent = trackArea
+
+            local bubble = Instance.new("TextLabel")
+            bubble.Name = "DragBubbleValue"
+            bubble.AnchorPoint = Vector2.new(0.5, 1)
+            bubble.Position = UDim2.new(0, 13, 0, 28)
+            bubble.Size = UDim2.new(0, 30, 0, 18)
+            bubble.BackgroundTransparency = 1
+            bubble.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+            bubble.BorderSizePixel = 0
+            bubble.Text = tostring(defaultValue)
+            bubble.TextColor3 = Color3.fromRGB(230, 230, 230)
+            bubble.TextTransparency = 1
+            bubble.Font = Enum.Font.Code
+            bubble.TextSize = 13
+            bubble.TextXAlignment = Enum.TextXAlignment.Center
+            bubble.TextYAlignment = Enum.TextYAlignment.Center
+            bubble.Visible = false
+            bubble.ZIndex = 20010
+            bubble.Parent = row
+
+            local bubbleCorner = Instance.new("UICorner")
+            bubbleCorner.CornerRadius = UDim.new(0, 6)
+            bubbleCorner.Parent = bubble
+
+            local bubbleStroke = Instance.new("UIStroke")
+            bubbleStroke.Thickness = 1
+            bubbleStroke.Transparency = 0.8
+            bubbleStroke.Color = Color3.fromRGB(40, 43, 46)
+            bubbleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            bubbleStroke.LineJoinMode = Enum.LineJoinMode.Round
+            bubbleStroke.Parent = bubble
+
+            -- Initialize + fire callback
+            row:SetAttribute("AsteriaSliderExternalValue", nil)
+            row:SetAttribute("AsteriaSliderExternalValue", defaultValue)
+
+            if type(callback) == "function" then
+                row:GetAttributeChangedSignal("SliderValue"):Connect(function()
+                    callback(tonumber(row:GetAttribute("SliderValue")))
+                end)
+            end
+
+            return row
+        end
+
+        function api:Clear()
+            for _, child in ipairs(body:GetChildren()) do
+                if child:IsA("GuiObject") and child.Name ~= "UIListLayout" then
+                    child:Destroy()
+                end
+            end
+            applyMenuHeight(computeTargetHeight(), false)
+        end
+
+        local function closeInternal()
+            if not isOpen then
+                return
+            end
+            isOpen = false
+            if activeModuleSettingMenu == api then
+                activeModuleSettingMenu = nil
+            end
+            disconnectConns()
+
+            if openTween then
+                openTween:Cancel()
+                openTween = nil
+            end
+            if closeTween then
+                closeTween:Cancel()
+                closeTween = nil
+            end
+
+            local menuW = menu:GetAttribute("MenuW") or menuWidth
+            local menuH = menu:GetAttribute("MenuH") or menu.Size.Y.Offset
+            local startSize = UDim2.new(0, menuW, 0, menuH)
+            local endSize = UDim2.new(0, menuW, 0, 4)
+
+            closeTween = TweenService:Create(menu, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = endSize,
+            })
+            closeTween.Completed:Connect(function()
+                if menu and menu.Parent and (not isOpen) then
+                    menu.Visible = false
+                    menu.Size = startSize
+                end
+            end)
+            closeTween:Play()
+        end
+
+        function api:Close()
+            closeInternal()
+        end
+
+        function api:OpenAt(point)
+            if typeof(point) ~= "Vector2" then
+                point = UserInputService:GetMouseLocation()
+            end
+
+            if activeModuleSettingMenu and activeModuleSettingMenu ~= api and activeModuleSettingMenu.Close then
+                pcall(function()
+                    activeModuleSettingMenu:Close()
+                end)
+            end
+            activeModuleSettingMenu = api
+
+            if closeTween then
+                closeTween:Cancel()
+                closeTween = nil
+            end
+            if openTween then
+                openTween:Cancel()
+                openTween = nil
+            end
+
+            local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+            applyMenuHeight(computeTargetHeight(), false)
+            local menuW = menu:GetAttribute("MenuW") or menuWidth
+            local menuH = menu:GetAttribute("MenuH") or menu.Size.Y.Offset
+
+            local x = math.clamp(point.X, 6, viewport.X - menuW - 6)
+            local y = math.clamp(point.Y, 6, viewport.Y - menuH - 6)
+
+            menu.Position = UDim2.new(0, x, 0, y)
+            menu.Visible = true
+            menu.Size = UDim2.new(0, menuW, 0, 4)
+            isOpen = true
+
+            openTween = TweenService:Create(menu, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, menuW, 0, menuH),
+            })
+            openTween:Play()
+
+            table.insert(conns, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then
+                    return
+                end
+                if not isOpen then
+                    return
+                end
+                if input.KeyCode == Enum.KeyCode.Escape then
+                    closeInternal()
+                    return
+                end
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    local p = UserInputService:GetMouseLocation()
+                    if not isPointInGuiObject(menu, p) then
+                        closeInternal()
+                    end
+                end
+            end))
+        end
+
+        function api:OpenAtMouse()
+            api:OpenAt(UserInputService:GetMouseLocation())
+        end
+
+        function api:Bind(guiObject)
+            if not (guiObject and guiObject.InputBegan) then
+                return
+            end
+            guiObject.Active = true
+            table.insert(conns, guiObject.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    api:OpenAtMouse()
+                end
+            end))
+        end
+
+        function api:Destroy()
+            disconnectConns()
+            if menu and menu.Parent then
+                menu:Destroy()
+            end
+            if activeModuleSettingMenu == api then
+                activeModuleSettingMenu = nil
+            end
+        end
+
+        -- Set initial size
+        applyMenuHeight(computeTargetHeight(), false)
+        return api
+    end
 
     -- Nilhub-style dropdown popup (used for Fuel dropdown)
     -- Supports overlay mode (anchored to a button) and inline mode (embedded in a holder that expands).
@@ -1514,6 +2310,14 @@ local function createAsteriaGUI(title, opts)
         searchBox.ClearTextOnFocus = true
         searchBox.TextScaled = false
         searchBox.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+
+        -- Avoid the global pink focus accent for this search box.
+        searchBox:SetAttribute("AsteriaNoPinkFocus", true)
+        pcall(function()
+            searchBox.SelectionColor3 = Color3.fromRGB(55, 58, 61)
+            searchBox.SelectionTransparency = 0.35
+        end)
+
         searchBox.Parent = root
 
         local searchCorner = Instance.new("UICorner")
@@ -1638,6 +2442,20 @@ local function createAsteriaGUI(title, opts)
             stroke.LineJoinMode = Enum.LineJoinMode.Round
             stroke.Parent = button
 
+            local selectedGradient = Instance.new("UIGradient")
+            selectedGradient.Name = "SelectedGradient"
+            selectedGradient.Offset = Vector2.new(0, 0)
+            selectedGradient.Rotation = 120
+            selectedGradient.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(1, 1),
+            })
+            selectedGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
+            })
+            selectedGradient.Parent = button
+
             local sheen = Instance.new("Frame")
             sheen.Name = "Frame"
             sheen.Visible = true
@@ -1756,20 +2574,41 @@ local function createAsteriaGUI(title, opts)
                 stroke = stroke,
                 check = check,
                 label = label,
+                selectedGradient = selectedGradient,
             }
         end
 
         local function setOptionVisual(optionObj, isSelected)
             if isSelected then
-                optionObj.button.BackgroundColor3 = Color3.fromRGB(190, 45, 45)
-                optionObj.stroke.Transparency = 0.25
+                optionObj.button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                optionObj.button.BackgroundTransparency = 0.1
+                optionObj.stroke.Transparency = 0.3
                 optionObj.check.ImageTransparency = 0
                 optionObj.label.TextColor3 = Color3.fromRGB(230, 230, 230)
+
+                if optionObj.selectedGradient then
+                    optionObj.selectedGradient.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 0),
+                        NumberSequenceKeypoint.new(1, 0),
+                    })
+                    optionObj.selectedGradient.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, ACCENT_BLACK:Lerp(ACCENT_PRIMARY, 0.10)),
+                        ColorSequenceKeypoint.new(1, ACCENT_BLACK:Lerp(ACCENT_PRIMARY, 0.45)),
+                    })
+                end
             else
                 optionObj.button.BackgroundColor3 = Color3.fromRGB(27, 30, 33)
+                optionObj.button.BackgroundTransparency = 0
                 optionObj.stroke.Transparency = 0.5
                 optionObj.check.ImageTransparency = 1
                 optionObj.label.TextColor3 = Color3.fromRGB(160, 160, 165)
+
+                if optionObj.selectedGradient then
+                    optionObj.selectedGradient.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 1),
+                        NumberSequenceKeypoint.new(1, 1),
+                    })
+                end
             end
         end
 
@@ -1797,18 +2636,31 @@ local function createAsteriaGUI(title, opts)
             if (not currentAnchorPositionObject or not currentAnchorPositionObject.Parent) or (not currentAnchorWidthObject or not currentAnchorWidthObject.Parent) then
                 return UDim2.new(0, 0, 0, 0), 0
             end
-            local btnPos = currentAnchorWidthObject.AbsolutePosition
-            local btnSize = currentAnchorWidthObject.AbsoluteSize
-            local btnHeight = btnSize.Y
-            if btnHeight <= 0 then
-                btnHeight = 24
+            local posObj = currentAnchorPositionObject
+            local widthObj = currentAnchorWidthObject
+
+            local posAbs = posObj.AbsolutePosition
+            local posSize = posObj.AbsoluteSize
+            local widthSize = widthObj.AbsoluteSize
+
+            local anchorHeight = posSize.Y
+            if anchorHeight <= 0 then
+                anchorHeight = 24
             end
-            local btnWidth = btnSize.X
-            if btnWidth <= 0 then
-                btnWidth = 160
+
+            local popupWidth = widthSize.X
+            if popupWidth <= 0 then
+                popupWidth = 160
             end
-            local pos = UDim2.new(0, btnPos.X, 0, btnPos.Y + btnHeight + DROPDOWN_GAP)
-            return pos, btnWidth
+
+            -- Center the popup horizontally under the anchor button
+            local anchorCenterX = posAbs.X + (posSize.X * 0.5)
+            local popupLeftX = math.floor(anchorCenterX - (popupWidth * 0.5) + 0.5)
+            -- Position popup directly below the anchor (under it, not over)
+            local popupTopY = math.floor(posAbs.Y + anchorHeight + DROPDOWN_GAP + 0.5)
+
+            local pos = UDim2.new(0, popupLeftX, 0, popupTopY)
+            return pos, popupWidth
         end
 
         local function clampNumber(v, minV, maxV)
@@ -1988,6 +2840,8 @@ local function createAsteriaGUI(title, opts)
             return point.X >= pos.X and point.X <= pos.X + size.X and point.Y >= pos.Y and point.Y <= pos.Y + size.Y
         end
 
+        local api = {}
+
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed then
                 return
@@ -2009,11 +2863,13 @@ local function createAsteriaGUI(title, opts)
                 return
             end
 
-            -- Click-off should close instantly (no animation)
-            closeImmediate()
+            -- Click-off should close with animation.
+            if api and api.Close then
+                api:Close()
+            else
+                closeImmediate()
+            end
         end)
-
-        local api = {}
 
         -- Expose the generated root so inline holder can size/reparent it.
         api._debugRoot = root
@@ -2375,7 +3231,11 @@ local function createAsteriaGUI(title, opts)
         dropdownButton.MouseButton1Click:Connect(function()
             if fuelDropdownPopup and fuelDropdownPopup:IsOpen() then
                 openToken += 1
-                fuelDropdownPopup:CloseImmediate()
+                if fuelDropdownPopup.Close then
+                    fuelDropdownPopup:Close()
+                else
+                    fuelDropdownPopup:CloseImmediate()
+                end
                 return
             end
 
@@ -22873,6 +23733,15 @@ local function createAsteriaGUI(title, opts)
         contentFrame = contentFrame,
         sideBar = sideBar,
         builder = builderApi,
+
+        -- Create a new right-click menu (ModuleSetting) instance.
+        -- Example:
+        --   local m = gui.ModuleSetting({ title = "My Menu" })
+        --   m:AddButton({ name = "Test", callback = function() end })
+        --   m:Bind(someGuiObject)
+        ModuleSetting = function(menuOpts)
+            return createModuleSetting(menuOpts)
+        end,
 
         setKeybindsVisible = function(visible)
             visible = (visible == true)
