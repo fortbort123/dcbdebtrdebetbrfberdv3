@@ -3992,11 +3992,8 @@ local function createAsteriaGUI(title, opts)
                     ghost = "reload",
                     description = "Reloads the UI",
                     run = function()
-                        local reloadFunc = reloadUI or (getgenv and getgenv().reloadUI) or _G.reloadUI
-                        if type(reloadFunc) == "function" then
-                            reloadFunc()
-                        else
-                            warn("[Asteria] No reload function found. Please re-execute your script to reload the UI.")
+                        if type(reloadUI) == "function" then
+                            reloadUI()
                         end
                     end,
                 },
@@ -22887,6 +22884,63 @@ local function createAsteriaGUI(title, opts)
             initialDropPlayed = false
             playInitialModuleDropAnimation()
         end,
+
+        -- Add a custom command to the command bar
+        -- Usage: gui.addCommand("mycommand", function() print("hi") end, "Does something cool")
+        addCommand = function(name, callback, description)
+            if type(name) ~= "string" or name == "" then
+                warn("addCommand: name must be a non-empty string")
+                return false
+            end
+            if type(callback) ~= "function" then
+                warn("addCommand: callback must be a function")
+                return false
+            end
+            
+            local normalizedName = string.lower(string.match(tostring(name), "^%s*(.-)%s*$"))
+            if normalizedName == "" then
+                warn("addCommand: normalized name is empty")
+                return false
+            end
+
+            commandSpecs[normalizedName] = {
+                ghost = normalizedName,
+                description = tostring(description or "Custom command"),
+                run = callback,
+            }
+            return true
+        end,
+
+        -- Remove a custom command from the command bar
+        -- Usage: gui.removeCommand("mycommand")
+        removeCommand = function(name)
+            if type(name) ~= "string" or name == "" then
+                warn("removeCommand: name must be a non-empty string")
+                return false
+            end
+            
+            local normalizedName = string.lower(string.match(tostring(name), "^%s*(.-)%s*$"))
+            if normalizedName == "" then
+                warn("removeCommand: normalized name is empty")
+                return false
+            end
+
+            if commandSpecs[normalizedName] then
+                commandSpecs[normalizedName] = nil
+                return true
+            end
+            return false
+        end,
+
+        -- Get list of all registered command names
+        getCommands = function()
+            local names = {}
+            for name, _ in pairs(commandSpecs) do
+                table.insert(names, name)
+            end
+            table.sort(names)
+            return names
+        end,
         
         -- Helper functions
         destroy = function()
@@ -22918,7 +22972,7 @@ end
 local Api = {}
 
 -- Build identifier (helps examples verify they loaded the correct file)
-Api.__build = "workspace-local-2025-12-28-v17-reload-fix"
+Api.__build = "workspace-local-2025-12-28-v17-command-api"
 
 -- Create a new GUI instance immediately.
 function Api.Create(title, opts)
