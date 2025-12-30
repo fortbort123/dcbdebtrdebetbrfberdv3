@@ -1386,25 +1386,67 @@ local function createAsteriaGUI(title, opts)
         header.ZIndex = 20002
         header.Parent = menu
 
-        local icon = Instance.new("ImageLabel")
-        icon.Name = "Icon"
-        icon.BackgroundTransparency = 1
-        icon.BorderSizePixel = 0
-        icon.AnchorPoint = Vector2.new(0, 0.5)
-        icon.Position = UDim2.new(0, 0, 0.5, 0)
-        icon.Size = UDim2.new(0, 16, 0, 16)
-        icon.Image = menuIcon
-        icon.ImageColor3 = Color3.fromRGB(160, 160, 165)
-        icon.ZIndex = 20003
-        icon.Parent = header
+        -- Header icon container (matches mainuiforapi.lua context menu + section icon container style)
+        local headerIconContainer = Instance.new("Frame")
+        headerIconContainer.Name = "HeaderIconContainer"
+        headerIconContainer.BackgroundColor3 = Color3.fromRGB(190, 45, 45)
+        headerIconContainer.BackgroundTransparency = 0
+        headerIconContainer.BorderSizePixel = 0
+        headerIconContainer.Size = UDim2.new(0, 20, 0, 20)
+        headerIconContainer.AnchorPoint = Vector2.new(0, 0.5)
+        headerIconContainer.Position = UDim2.new(0, 0, 0.5, 0)
+        headerIconContainer.ZIndex = 20002
+        headerIconContainer.Parent = header
+
+        local headerIconCorner = Instance.new("UICorner")
+        headerIconCorner.CornerRadius = UDim.new(0, 6)
+        headerIconCorner.Parent = headerIconContainer
+
+        local headerIconStroke = Instance.new("UIStroke")
+        headerIconStroke.Thickness = 1
+        headerIconStroke.Transparency = 0.75
+        headerIconStroke.Color = Color3.fromRGB(190, 45, 45)
+        headerIconStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        headerIconStroke.LineJoinMode = Enum.LineJoinMode.Round
+        headerIconStroke.Parent = headerIconContainer
+
+        local headerIconGradient = Instance.new("UIGradient")
+        headerIconGradient.Name = "UIGradient"
+        headerIconGradient.Offset = Vector2.new(0, 0)
+        headerIconGradient.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.25, 0.9),
+            NumberSequenceKeypoint.new(0.5, 0.8),
+            NumberSequenceKeypoint.new(0.75, 0.9),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        headerIconGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+        })
+        headerIconGradient.Rotation = 125
+        headerIconGradient.Parent = headerIconContainer
+
+        local headerIcon = Instance.new("ImageLabel")
+        headerIcon.Name = "HeaderIcon"
+        headerIcon.BackgroundTransparency = 1
+        headerIcon.BorderSizePixel = 0
+        headerIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+        headerIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+        headerIcon.Size = UDim2.new(0, 12, 0, 12)
+        headerIcon.Image = menuIcon
+        headerIcon.ImageColor3 = Color3.fromRGB(190, 45, 45)
+        headerIcon.ScaleType = Enum.ScaleType.Stretch
+        headerIcon.ZIndex = 20003
+        headerIcon.Parent = headerIconContainer
 
         local titleLabel = Instance.new("TextLabel")
         titleLabel.Name = "Title"
         titleLabel.BackgroundTransparency = 1
         titleLabel.BorderSizePixel = 0
         titleLabel.AnchorPoint = Vector2.new(0, 0.5)
-        titleLabel.Position = UDim2.new(0, 22, 0.5, 0)
-        titleLabel.Size = UDim2.new(1, -22, 1, 0)
+        titleLabel.Position = UDim2.new(0, 28, 0.5, 0)
+        titleLabel.Size = UDim2.new(1, -(28 + 22), 1, 0)
         titleLabel.Font = Enum.Font.GothamBold
         titleLabel.TextSize = 13
         titleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1809,7 +1851,7 @@ local function createAsteriaGUI(title, opts)
             if type(imageId) ~= "string" or imageId == "" then
                 return
             end
-            icon.Image = imageId
+            headerIcon.Image = imageId
         end
 
         local function findNearestSectionIcon(fromGuiObject)
