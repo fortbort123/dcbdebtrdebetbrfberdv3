@@ -1253,6 +1253,7 @@ local function createAsteriaGUI(title, opts)
         local openTween = nil
         local closeTween = nil
         local conns = {}
+        local persistentConns = {}  -- Separate table for persistent bindings
 
         local function disconnectConns()
             for _, c in ipairs(conns) do
@@ -1261,6 +1262,16 @@ local function createAsteriaGUI(title, opts)
                 end)
             end
             table.clear(conns)
+        end
+        
+        local function disconnectAllConns()
+            disconnectConns()
+            for _, c in ipairs(persistentConns) do
+                pcall(function()
+                    c:Disconnect()
+                end)
+            end
+            table.clear(persistentConns)
         end
 
         local function isPointInGuiObject(guiObject, point)
@@ -2415,7 +2426,7 @@ local function createAsteriaGUI(title, opts)
                 return
             end
             target.Active = true
-            table.insert(conns, target.InputBegan:Connect(function(input)
+            table.insert(persistentConns, target.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton2 then
                     local sectionIcon = findNearestSectionIcon(target)
                     setMenuIcon(sectionIcon or menuIcon)
@@ -2425,7 +2436,7 @@ local function createAsteriaGUI(title, opts)
         end
 
         function api:Destroy()
-            disconnectConns()
+            disconnectAllConns()
             if menu and menu.Parent then
                 menu:Destroy()
             end
