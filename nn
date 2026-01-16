@@ -1,4 +1,3 @@
-
 -- Asteria Hub Universal GUI - Local Script Version
 -- Execute this directly in your executor
 
@@ -5565,6 +5564,253 @@ local function createAsteriaGUI(title, opts)
                     description = "Disables packet blink mode and sends packets",
                     run = function()
                         DisableBlink()
+                    end,
+                },
+                sblink = {
+                    ghost = "sblink",
+                    description = "Smart Blink - teleport to sky + blink + fly invisible (WASD to move, Space/Ctrl for up/down, Shift to sprint)",
+                    run = function()
+                        -- Smart Blink state (stored in _G for persistence)
+                        if not _G.AsteriaSmartBlink then
+                            _G.AsteriaSmartBlink = {
+                                enabled = false,
+                                flyConnection = nil,
+                                keyConnections = {},
+                                originalPos = nil,
+                                HEIGHT = 1000000,
+                                FLY_SPEED = 100,
+                                SPRINT_MULTIPLIER = 2.0,
+                            }
+                        end
+                        
+                        local sb = _G.AsteriaSmartBlink
+                        
+                        -- Vape-style calculateMoveVector function
+                        local function calculateMoveVector(vec)
+                            local gameCamera = workspace.CurrentCamera
+                            local c, s
+                            local _, _, _, R00, R01, R02, _, _, R12, _, _, R22 = gameCamera.CFrame:GetComponents()
+                            if R12 < 1 and R12 > -1 then
+                                c = R22
+                                s = R02
+                            else
+                                c = R00
+                                s = -R01 * math.sign(R12)
+                            end
+                            vec = Vector3.new((c * vec.X + s * vec.Z), 0, (c * vec.Z - s * vec.X)) / math.sqrt(c * c + s * s)
+                            return vec.Unit == vec.Unit and vec.Unit or Vector3.zero
+                        end
+                        
+                        local function setupSmartBlinkFly()
+                            local localPlayer = Players.LocalPlayer
+                            local character = localPlayer.Character
+                            if not character then return end
+                            
+                            local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+                            local rootPart = character:FindFirstChild("HumanoidRootPart")
+                            if not rootPart or not humanoid then return end
+                            
+                            local YLevel = rootPart.Position.Y
+                            local w, s, a, d = 0, 0, 0, 0
+                            local up, down = 0, 0
+                            
+                            -- Initialize current key states
+                            w = UserInputService:IsKeyDown(Enum.KeyCode.W) and -1 or 0
+                            s = UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0
+                            a = UserInputService:IsKeyDown(Enum.KeyCode.A) and -1 or 0
+                            d = UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0
+                            
+                            -- InputBegan handler
+                            table.insert(sb.keyConnections, UserInputService.InputBegan:Connect(function(input, processed)
+                                if processed then return end
+                                if input.KeyCode == Enum.KeyCode.W then w = -1
+                                elseif input.KeyCode == Enum.KeyCode.S then s = 1
+                                elseif input.KeyCode == Enum.KeyCode.A then a = -1
+                                elseif input.KeyCode == Enum.KeyCode.D then d = 1
+                                elseif input.KeyCode == Enum.KeyCode.Space then up = 1
+                                elseif input.KeyCode == Enum.KeyCode.LeftControl then down = -1
+                                end
+                            end))
+                            
+                            -- InputEnded handler
+                            table.insert(sb.keyConnections, UserInputService.InputEnded:Connect(function(input)
+                                if input.KeyCode == Enum.KeyCode.W then w = 0
+                                elseif input.KeyCode == Enum.KeyCode.S then s = 0
+                                elseif input.KeyCode == Enum.KeyCode.A then a = 0
+                                elseif input.KeyCode == Enum.KeyCode.D then d = 0
+                                elseif input.KeyCode == Enum.KeyCode.Space then up = 0
+                                elseif input.KeyCode == Enum.KeyCode.LeftControl then down = 0
+                                end
+                            end))
+                            
+                            -- Vape-style CFrame fly using PreSimulation
+                            sb.flyConnection = RunService.PreSimulation:Connect(function(dt)
+                                if not sb.enabled then return end
+                                if not rootPart or not rootPart.Parent then return end
+                                
+                                local gameCamera = workspace.CurrentCamera
+                                rootPart.RotVelocity = Vector3.zero
+                                
+                                local currentSpeed = sb.FLY_SPEED
+                                if UserInputService:IsKeyDown(Enum.KeyCode.E) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                                    currentSpeed = currentSpeed * sb.SPRINT_MULTIPLIER
+                                end
+                                
+                                local moveDirection = calculateMoveVector(Vector3.new(a + d, 0, w + s))
+                                local horizontalMove = moveDirection * currentSpeed * dt
+                                
+                                YLevel = YLevel + ((up + down) * sb.FLY_SPEED * dt)
+                                rootPart.Velocity = rootPart.Velocity * Vector3.new(1, 0, 1)
+                                
+                                local newPos = rootPart.Position + horizontalMove
+                                newPos = Vector3.new(newPos.X, YLevel, newPos.Z)
+                                
+                                local camLookFlat = gameCamera.CFrame.LookVector * Vector3.new(1, 0, 1)
+                                if camLookFlat.Magnitude > 0.01 then
+                                    rootPart.CFrame = CFrame.lookAlong(newPos, camLookFlat)
+                                else
+                                    rootPart.CFrame = CFrame.new(newPos)
+                                end
+                            end)
+                        end
+                        
+                        -- Toggle Smart Blink
+                        if sb.enabled then
+                            -- Already enabled, disable it
+                            sb.enabled = false
+                            
+                            if sb.flyConnection then
+                                sb.flyConnection:Disconnect()
+                                sb.flyConnection = nil
+                            end
+                            
+                            for _, conn in pairs(sb.keyConnections) do
+                                if conn and conn.Disconnect then
+                                    conn:Disconnect()
+                                end
+                            end
+                            sb.keyConnections = {}
+                            
+                            DisableBlink()
+                            
+                            local character = player.Character
+                            if character then
+                                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                                local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+                                
+                                if humanoid then humanoid.PlatformStand = false end
+                                if rootPart then
+                                    rootPart.Anchored = false
+                                    rootPart.Velocity = Vector3.new(0, 0, 0)
+                                    rootPart.RotVelocity = Vector3.new(0, 0, 0)
+                                end
+                            end
+                            
+                            sb.originalPos = nil
+                            print("Smart Blink: OFF - Visible again")
+                        else
+                            -- Enable Smart Blink
+                            local character = player.Character
+                            if not character then return end
+                            
+                            local rootPart = character:FindFirstChild("HumanoidRootPart")
+                            if not rootPart then return end
+                            
+                            local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+                            
+                            sb.originalPos = rootPart.CFrame
+                            local targetY = rootPart.Position.Y + sb.HEIGHT
+                            
+                            -- STEP 1: TELEPORT TO SKY
+                            if humanoid then humanoid.PlatformStand = true end
+                            rootPart.Velocity = Vector3.new(0, 0, 0)
+                            rootPart.RotVelocity = Vector3.new(0, 0, 0)
+                            
+                            for i = 1, 10 do
+                                rootPart.CFrame = CFrame.new(rootPart.Position.X, targetY, rootPart.Position.Z)
+                                rootPart.Velocity = Vector3.new(0, 0, 0)
+                            end
+                            task.wait(0.05)
+                            
+                            local requiredY = sb.originalPos.Position.Y + sb.HEIGHT - 1000
+                            local attempts = 0
+                            while rootPart.Position.Y < requiredY and attempts < 20 do
+                                rootPart.CFrame = CFrame.new(rootPart.Position.X, targetY, rootPart.Position.Z)
+                                rootPart.Velocity = Vector3.new(0, 0, 0)
+                                task.wait()
+                                attempts = attempts + 1
+                            end
+                            
+                            if rootPart.Position.Y < requiredY then
+                                if humanoid then humanoid.PlatformStand = false end
+                                warn("Smart Blink: FAILED - Could not get to sky")
+                                return
+                            end
+                            
+                            -- STEP 2: FREEZE IN SKY
+                            rootPart.Anchored = true
+                            task.wait(0.05)
+                            
+                            -- STEP 3: ENABLE BLINK WHILE FROZEN
+                            EnableBlink("Movement Only")
+                            task.wait(0.1)
+                            
+                            -- STEP 4: UNFREEZE
+                            rootPart.Anchored = false
+                            task.wait()
+                            
+                            -- STEP 5: TELEPORT BACK DOWN
+                            rootPart.CFrame = sb.originalPos
+                            rootPart.Velocity = Vector3.new(0, 0, 0)
+                            rootPart.RotVelocity = Vector3.new(0, 0, 0)
+                            
+                            -- STEP 6: START FLYING
+                            sb.enabled = true
+                            if humanoid then humanoid.PlatformStand = true end
+                            setupSmartBlinkFly()
+                            
+                            print("Smart Blink: ON - Flying invisible (server sees Y=" .. tostring(math.floor(targetY)) .. ")")
+                        end
+                    end,
+                },
+                unsblink = {
+                    ghost = "unsblink",
+                    description = "Disable Smart Blink and become visible again",
+                    run = function()
+                        if _G.AsteriaSmartBlink and _G.AsteriaSmartBlink.enabled then
+                            local sb = _G.AsteriaSmartBlink
+                            sb.enabled = false
+                            
+                            if sb.flyConnection then
+                                sb.flyConnection:Disconnect()
+                                sb.flyConnection = nil
+                            end
+                            
+                            for _, conn in pairs(sb.keyConnections) do
+                                if conn and conn.Disconnect then
+                                    conn:Disconnect()
+                                end
+                            end
+                            sb.keyConnections = {}
+                            
+                            DisableBlink()
+                            
+                            local character = player.Character
+                            if character then
+                                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                                local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+                                
+                                if humanoid then humanoid.PlatformStand = false end
+                                if rootPart then
+                                    rootPart.Anchored = false
+                                    rootPart.Velocity = Vector3.new(0, 0, 0)
+                                    rootPart.RotVelocity = Vector3.new(0, 0, 0)
+                                end
+                            end
+                            
+                            sb.originalPos = nil
+                            print("Smart Blink: OFF - Visible again")
+                        end
                     end,
                 },
                 goto = {
